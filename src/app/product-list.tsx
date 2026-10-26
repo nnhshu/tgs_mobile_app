@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,35 +8,23 @@ import { useCategories, useProducts } from '@/api/hooks';
 import { Category } from '@/api/mappers';
 import { ProductOrderBy } from '@/api/types';
 import { icons } from '@/assets';
-import { countFilters, emptyFilter, FilterSheet, priceBounds, ProductFilter } from '@/components/filter-sheet';
+import { applyClientFilter, countFilters, emptyFilter, FilterSheet, hasClientFilters, ProductFilter, serverQuery } from '@/components/filter-sheet';
 import { Skeleton } from '@/components/form';
 import { ScreenHeader } from '@/components/headers';
-import { BottomSheet, SpinningLoader } from '@/components/overlays';
+import { BottomSheet, SpinningLoader, useToast } from '@/components/overlays';
 import { ProductCard } from '@/components/product-card';
 import { StateView } from '@/components/state-view';
 import { AppText, Icon, RIcon } from '@/components/ui';
-import { Product } from '@/data/mock';
 import { colors } from '@/theme';
 
-/** Sắp xếp phía server — API hỗ trợ orderby=date|price|title. */
-const SORTS: { label: string; orderby?: ProductOrderBy; order?: 'asc' | 'desc' }[] = [
-  { label: 'Mặc định' },
-  { label: 'Mới nhất', orderby: 'date', order: 'desc' },
-  { label: 'Giá thấp đến cao', orderby: 'price', order: 'asc' },
-  { label: 'Giá cao đến thấp', orderby: 'price', order: 'desc' },
-  { label: 'Tên A - Z', orderby: 'title', order: 'asc' },
+/** Tab sắp xếp (Figma "02_Sản phẩm_Khuyến mãi") — API chỉ hỗ trợ orderby=date|price|title. */
+type SortTab = 'all' | 'best' | 'new' | 'price';
+const SORT_TABS: { key: SortTab; label: string }[] = [
+  { key: 'all', label: 'Tất cả' },
+  { key: 'best', label: 'Bán chạy' },
+  { key: 'new', label: 'Hàng mới' },
+  { key: 'price', label: 'Giá' },
 ];
-
-/** Lọc phía client trên các sản phẩm đã tải (API chưa hỗ trợ lọc theo giá/thương hiệu). */
-const applyFilter = (list: Product[], f: ProductFilter) => {
-  const [min, max] = priceBounds(f);
-  return list.filter(
-    (p) =>
-      (p.contactPrice ? !f.price && !f.minPrice && !f.maxPrice : p.price >= min && p.price <= max) &&
-      (!f.brands.length || (p.brand && f.brands.includes(p.brand))) &&
-      (!f.inStock || p.stock !== 0),
-  );
-};
 
 const findCategory = (tree: Category[], id: number): Category | undefined => {
   for (const c of tree) {
@@ -56,9 +44,10 @@ export default function ProductListScreen() {
   const { width } = useWindowDimensions();
   const gridItemWidth = Math.floor((width - 24 - 12) / 2);
 
-  const initialSort = SORTS.findIndex((s) => s.orderby === params.orderby && s.order === params.order);
-  const [sortIndex, setSortIndex] = useState(initialSort > 0 ? initialSort : 0);
-  const [sortOpen, setSortOpen] = useState(false);
+  const toast = useToast();
+  const [tab, setTab] = useState<SortTab>(params.orderby === 'date' ? 'new' : params.orderby === 'price' ? 'price' : 'all');
+  const [priceOrder, setPriceOrder] = useState<'asc' | 'desc'>(params.orderby === 'price' && params.order === 'desc' ? 'desc' : 'asc');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [filter, setFilter] = useState<ProductFilter>(emptyFilter);
   const [filterOpen, setFilterOpen] = useState(false);
 
@@ -67,12 +56,26 @@ export default function ProductListScreen() {
   const categories = useCategories();
   const current = baseCategory && categories.data ? findCategory(categories.data, baseCategory) : undefined;
 
-  const sort = SORTS[sortIndex];
-  const query = useProducts({ category: subCategory ?? baseCategory, search: params.search, orderby: sort.orderby, order: sort.order });
+  const sort: { orderby?: ProductOrderBy; order?: 'asc' | 'desc' } =
+    tab === 'new' ? { orderby: 'date', order: 'desc' } : tab === 'price' ? { orderby: 'price', order: priceOrder } : {};
+  const pressTab = (key: SortTab) => {
+    // API chưa có thứ tự "bán chạy" (orderby chỉ nhận date | price | title).
+    if (key === 'best') return toast('Sắp xếp theo bán chạy sẽ sớm ra mắt', 'informationLine');
+    // Bấm lại tab Giá → đổi chiều tăng / giảm.
+    if (key === 'price' && tab === 'price') setPriceOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    setTab(key);
+  };
+  // Danh mục, giá, khuyến mãi, còn hàng lọc ở server; thương hiệu & nơi bán lọc trên các trang đã tải.
+  const query = useProducts({ category: subCategory ?? baseCategory, search: params.search, orderby: sort.orderby, order: sort.order, ...serverQuery(filter) });
 
-  const items = useMemo(() => applyFilter(query.products, filter), [query.products, filter]);
-  const brands = useMemo(() => Array.from(new Set(query.products.map((p) => p.brand).filter((b): b is string => !!b))).sort(), [query.products]);
+  const items = useMemo(() => applyClientFilter(query.products, filter), [query.products, filter]);
   const filterCount = countFilters(filter);
+  const clientFiltering = hasClientFilters(filter);
+
+  // Lọc trên máy mà còn ít kết quả → tự tải thêm trang (tối đa ~200 sản phẩm) để không bỏ sót.
+  useEffect(() => {
+    if (clientFiltering && items.length < 12 && query.hasNextPage && !query.isFetching && query.products.length < 200) query.fetchNextPage();
+  }, [clientFiltering, items.length, query]);
 
   return (
     <View style={styles.screen}>
@@ -80,25 +83,39 @@ export default function ProductListScreen() {
       <ScreenHeader
         title={params.title ?? current?.name ?? 'Sản phẩm'}
         right={
-          <Pressable onPress={() => router.push('/search')} hitSlop={8}>
-            <Icon source={icons.searchGray} size={24} />
+          <Pressable onPress={() => setMenuOpen(true)} hitSlop={8}>
+            <Icon source={icons.moreFill} size={24} />
           </Pressable>
         }
       />
+      {/* Lọc + tab sắp xếp */}
       <View style={styles.toolbar}>
-        <Pressable style={styles.tool} onPress={() => setSortOpen(true)}>
-          <RIcon name="expandUpDownLine" size={18} />
-          <AppText weight="medium" numberOfLines={1}>
-            {sort.label}
-          </AppText>
-        </Pressable>
-        <View style={styles.toolDivider} />
-        <Pressable style={styles.tool} onPress={() => setFilterOpen(true)}>
-          <RIcon name="filter2Line" size={18} color={filterCount ? colors.primary : colors.text} />
-          <AppText weight="medium" color={filterCount ? colors.primary : colors.text}>
-            Lọc{filterCount ? ` (${filterCount})` : ''}
-          </AppText>
-        </Pressable>
+        <View style={styles.toolbarContent}>
+          <Pressable style={[styles.filterPill, filterCount > 0 && styles.filterPillActive]} onPress={() => setFilterOpen(true)}>
+            <RIcon name="filter2Line" size={16} color={colors.primary} />
+            <AppText variant="bodySmallSemibold" color={colors.primary}>
+              Lọc{filterCount ? ` (${filterCount})` : ''}
+            </AppText>
+          </Pressable>
+          {SORT_TABS.map((t) => {
+            const active = t.key === tab;
+            return (
+              <Pressable key={t.key} onPress={() => pressTab(t.key)} style={styles.tab} hitSlop={6}>
+                <AppText variant={active ? 'bodySmallSemibold' : 'bodySmall'} color={active ? colors.primary : colors.text}>
+                  {t.label}
+                </AppText>
+                {t.key === 'price' && (
+                  <RIcon
+                    name={tab === 'price' ? (priceOrder === 'asc' ? 'arrowUpSLine' : 'arrowDownSLine') : 'expandUpDownLine'}
+                    size={18}
+                    color={colors.primary}
+                  />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.toolbarLine} />
       </View>
 
       {current && current.children.length > 0 && (
@@ -130,6 +147,11 @@ export default function ProductListScreen() {
         <View style={styles.empty}>
           <StateView type="offline" title="Không thể tải sản phẩm" message={query.error?.message ?? 'Kiểm tra kết nối và thử lại'} actionLabel="Thử lại" onAction={() => query.refetch()} />
         </View>
+      ) : items.length === 0 && (query.isFetchingNextPage || (clientFiltering && query.hasNextPage && query.products.length < 200)) ? (
+        // Đang tải thêm trang để tìm sản phẩm khớp bộ lọc thương hiệu / nơi bán.
+        <View style={styles.empty}>
+          <SpinningLoader />
+        </View>
       ) : items.length === 0 ? (
         <View style={styles.empty}>
           <StateView
@@ -148,11 +170,7 @@ export default function ProductListScreen() {
           style={{ backgroundColor: colors.white }}
           columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 12 }}
           contentContainerStyle={{ rowGap: 12, paddingBottom: insets.bottom + 16 }}
-          ListHeaderComponent={
-            <AppText style={styles.count}>
-              {filterCount ? `${items.length} / ${query.products.length} sản phẩm đã tải` : `${query.total} sản phẩm`}
-            </AppText>
-          }
+          ListHeaderComponent={<View style={{ height: 12 }} />}
           renderItem={({ item }) => <ProductCard product={item} width={gridItemWidth} />}
           onEndReachedThreshold={0.6}
           onEndReached={() => query.hasNextPage && !query.isFetchingNextPage && query.fetchNextPage()}
@@ -162,19 +180,23 @@ export default function ProductListScreen() {
         />
       )}
 
-      <BottomSheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sắp xếp theo">
-        {SORTS.map((s, i) => (
+      <BottomSheet visible={menuOpen} onClose={() => setMenuOpen(false)}>
+        {[
+          { icon: 'searchLine' as const, label: 'Tìm kiếm', go: () => router.push('/search') },
+          { icon: 'shoppingCart2Line' as const, label: 'Giỏ hàng', go: () => router.push('/cart') },
+          { icon: 'home5Line' as const, label: 'Về trang chủ', go: () => router.dismissTo('/(tabs)') },
+        ].map((m) => (
           <Pressable
-            key={s.label}
+            key={m.label}
             style={styles.sortRow}
             onPress={() => {
-              setSortIndex(i);
-              setSortOpen(false);
+              setMenuOpen(false);
+              m.go();
             }}>
-            <AppText variant="bodyMediumRegular" weight={i === sortIndex ? 'semibold' : 'regular'} color={i === sortIndex ? colors.primary : colors.text} style={{ flex: 1 }}>
-              {s.label}
+            <RIcon name={m.icon} size={22} color={colors.primary} />
+            <AppText variant="bodyMediumRegular" style={{ flex: 1 }}>
+              {m.label}
             </AppText>
-            {i === sortIndex && <RIcon name="checkLine" size={22} color={colors.primary} />}
           </Pressable>
         ))}
       </BottomSheet>
@@ -182,8 +204,6 @@ export default function ProductListScreen() {
       <FilterSheet
         visible={filterOpen}
         value={filter}
-        brands={brands}
-        resultCount={(f) => applyFilter(query.products, f).length}
         onClose={() => setFilterOpen(false)}
         onApply={(f) => {
           setFilter(f);
@@ -196,15 +216,17 @@ export default function ProductListScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  toolbar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, marginTop: 2, height: 48 },
-  tool: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: '100%', paddingHorizontal: 8 },
-  toolDivider: { width: 1, height: 20, backgroundColor: colors.neutral40 },
+  toolbar: { backgroundColor: colors.white, marginTop: 2 },
+  toolbarContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, height: 52 },
+  toolbarLine: { height: 1, marginHorizontal: 12, backgroundColor: colors.neutral40 },
+  filterPill: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 32, paddingHorizontal: 12, borderRadius: 100, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.primarySurface },
+  filterPillActive: { borderWidth: 1.5 },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 32 },
   subBar: { flexGrow: 0, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.neutral30 },
   subBarContent: { gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
   subChip: { height: 32, paddingHorizontal: 12, borderRadius: 100, borderWidth: 1, borderColor: colors.neutral40, justifyContent: 'center' },
   subChipActive: { borderColor: colors.primary, backgroundColor: colors.primarySurface },
-  count: { paddingHorizontal: 12, paddingVertical: 12, color: colors.neutral70 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 12, rowGap: 12 },
   empty: { flex: 1, backgroundColor: colors.white, justifyContent: 'center', paddingBottom: 80 },
-  sortRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.neutral30 },
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.neutral30 },
 });

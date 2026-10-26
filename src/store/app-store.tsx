@@ -123,7 +123,8 @@ function useAppState() {
         setLoggedIn(true);
         if (patch) setProfile((p) => ({ ...p, ...patch }));
         const expires = parseExpiry(expiresAt);
-        SecureStore.setItemAsync(SESSION_KEY, JSON.stringify({ token: newToken, expiresAt: expires, profile: patch })).catch(() => {});
+        // Giữ hồ sơ đang có khi chỉ đổi token (vd. sau đổi mật khẩu).
+        SecureStore.setItemAsync(SESSION_KEY, JSON.stringify({ token: newToken, expiresAt: expires, profile: { ...profile, ...patch } })).catch(() => {});
       },
       logout: () => {
         if (token) logoutRemote(token);

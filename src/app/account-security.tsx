@@ -1,11 +1,14 @@
+import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { useChangePassword } from '@/api/hooks';
 import { icons } from '@/assets';
 import { FormField } from '@/components/form';
 import { ScreenHeader } from '@/components/headers';
 import { BottomSheet, useToast } from '@/components/overlays';
+import { StateView } from '@/components/state-view';
 import { AppText, Button, Divider, Icon, RIcon } from '@/components/ui';
 import { useApp } from '@/store/app-store';
 import { colors } from '@/theme';
@@ -13,19 +16,63 @@ import { colors } from '@/theme';
 /** Account & Password — số điện thoại, đổi mật khẩu, liên kết Zalo/Google. */
 export default function AccountSecurityScreen() {
   const toast = useToast();
-  const { profile, updateProfile } = useApp();
-  const [sheet, setSheet] = useState<'phone' | 'password' | null>(null);
+  const { profile, updateProfile, isLoggedIn } = useApp();
+  // Mở thẳng form đổi mật khẩu từ tab Tài khoản: /account-security?open=password
+  const { open } = useLocalSearchParams<{ open?: string }>();
+  const [sheet, setSheet] = useState<'phone' | 'password' | null>(open === 'password' ? 'password' : null);
   const [phone, setPhone] = useState(profile.phone);
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [show, setShow] = useState(false);
   const [linked, setLinked] = useState({ Zalo: true, Google: false });
+  const changePassword = useChangePassword();
 
-  const pwError = pw.next && pw.next.length < 8 ? 'Mật khẩu tối thiểu 8 ký tự' : pw.confirm && pw.confirm !== pw.next ? 'Mật khẩu xác nhận không khớp' : '';
+  // Server chỉ yêu cầu tối thiểu 8 ký tự.
+  const pwError =
+    pw.next && pw.next.length < 8
+      ? 'Mật khẩu tối thiểu 8 ký tự'
+      : pw.next && pw.next === pw.current
+        ? 'Mật khẩu mới phải khác mật khẩu hiện tại'
+        : pw.confirm && pw.confirm !== pw.next
+          ? 'Mật khẩu xác nhận không khớp'
+          : '';
+  const closePassword = () => {
+    setSheet(null);
+    setPw({ current: '', next: '', confirm: '' });
+    changePassword.reset();
+  };
+  const submitPassword = () =>
+    changePassword.mutate(
+      { current_password: pw.current, new_password: pw.next },
+      {
+        onSuccess: () => {
+          closePassword();
+          toast('Đổi mật khẩu thành công');
+        },
+      },
+    );
   const eye = (
     <Pressable onPress={() => setShow((v) => !v)} hitSlop={8}>
       <RIcon name={show ? 'eyeOffLine' : 'eyeLine'} size={20} color={colors.neutral60} />
     </Pressable>
   );
+
+  if (!isLoggedIn) {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.white }]}>
+        <StatusBar style="dark" />
+        <ScreenHeader title="Tài khoản & Mật khẩu" />
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <StateView
+            type="empty"
+            title="Bạn chưa đăng nhập"
+            message="Đăng nhập để đổi mật khẩu và quản lý tài khoản"
+            actionLabel="Đăng nhập"
+            onAction={() => router.replace({ pathname: '/login', params: { redirect: '/account-security' } })}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -85,23 +132,27 @@ export default function AccountSecurityScreen() {
 
       <BottomSheet
         visible={sheet === 'password'}
-        onClose={() => setSheet(null)}
+        onClose={closePassword}
         title="Đổi mật khẩu"
         footer={
           <Button
-            title="Đổi mật khẩu"
-            disabled={!pw.current || !pw.next || !!pwError || pw.next !== pw.confirm}
-            onPress={() => {
-              setSheet(null);
-              setPw({ current: '', next: '', confirm: '' });
-              toast('Đổi mật khẩu thành công');
-            }}
+            title={changePassword.isPending ? 'Đang đổi...' : 'Đổi mật khẩu'}
+            disabled={!pw.current || !pw.next || !!pwError || pw.next !== pw.confirm || changePassword.isPending}
+            onPress={submitPassword}
           />
         }>
         <View style={{ gap: 12, paddingBottom: 12 }}>
           <FormField label="Mật khẩu hiện tại" secureTextEntry={!show} value={pw.current} onChangeText={(t) => setPw((p) => ({ ...p, current: t }))} right={eye} />
           <FormField label="Mật khẩu mới" secureTextEntry={!show} value={pw.next} onChangeText={(t) => setPw((p) => ({ ...p, next: t }))} right={eye} />
           <FormField label="Nhập lại mật khẩu mới" secureTextEntry={!show} value={pw.confirm} onChangeText={(t) => setPw((p) => ({ ...p, confirm: t }))} error={pwError} right={eye} />
+          {changePassword.error && (
+            <View style={styles.serverError}>
+              <RIcon name="errorWarningFill" size={18} color={colors.error} />
+              <AppText color={colors.error} style={{ flex: 1 }}>
+                {changePassword.error.message}
+              </AppText>
+            </View>
+          )}
         </View>
       </BottomSheet>
     </View>
@@ -125,5 +176,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   card: { backgroundColor: colors.white, padding: 12, gap: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  serverError: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10, borderRadius: 8, backgroundColor: colors.errorSurface },
   linkBtn: { borderWidth: 1, borderColor: colors.primary, borderRadius: 100, paddingHorizontal: 12, paddingVertical: 4 },
 });

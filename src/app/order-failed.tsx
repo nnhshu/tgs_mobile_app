@@ -6,11 +6,13 @@ import Animated, { ZoomIn } from 'react-native-reanimated';
 import { icons } from '@/assets';
 import { ScreenHeader } from '@/components/headers';
 import { AppText, Button, RIcon } from '@/components/ui';
+import { useOpenLink } from '@/hooks/use-open-link';
 import { colors } from '@/theme';
 
-/** Đặt hàng thất bại (2 biến thể: lỗi thanh toán / lỗi hệ thống). */
+/** Đặt hàng thất bại — hiển thị lý do server trả về (hết hàng, đơn trùng...). */
 export default function OrderFailedScreen() {
-  const { reason } = useLocalSearchParams<{ reason?: string }>();
+  const { reason, lookupUrl } = useLocalSearchParams<{ reason?: string; lookupUrl?: string }>();
+  const openLink = useOpenLink();
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
@@ -25,14 +27,11 @@ export default function OrderFailedScreen() {
         </AppText>
         <View style={{ gap: 12, alignSelf: 'stretch', marginTop: 16 }}>
           <Button title="Thử lại" onPress={() => router.dismissTo('/checkout')} />
-          <Button
-            title="Đổi phương thức thanh toán"
-            variant="outline"
-            onPress={() => {
-              router.dismissTo('/checkout');
-              router.push({ pathname: '/payment-methods', params: { select: '1' } });
-            }}
-          />
+          {lookupUrl ? (
+            <Button title="Tra cứu đơn hàng" variant="outline" onPress={() => openLink(lookupUrl)} />
+          ) : (
+            <Button title="Về giỏ hàng" variant="outline" onPress={() => router.dismissTo('/cart')} />
+          )}
           <Pressable onPress={() => router.dismissTo('/(tabs)')} style={{ alignSelf: 'center', padding: 8 }}>
             <AppText variant="bodyMediumRegular">Về trang chủ</AppText>
           </Pressable>

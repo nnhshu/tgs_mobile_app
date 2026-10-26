@@ -23,7 +23,8 @@ export type ApiLogEntry = {
 };
 
 const MAX_ENTRIES = 200;
-const SENSITIVE = /^(password|pass|token|access_token|jwt|code|otp|authorization)$/i;
+// Mọi khoá chứa "password" / "token" (current_password, new_password, access_token...) + mã OTP.
+const SENSITIVE = /password|token|jwt|authorization|^(pass|code|otp)$/i;
 
 let entries: ApiLogEntry[] = [];
 let nextId = 1;

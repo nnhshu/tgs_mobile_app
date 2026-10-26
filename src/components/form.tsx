@@ -12,6 +12,7 @@ export function FormField({
   required,
   error,
   icon,
+  leading,
   right,
   style,
   multiline,
@@ -21,6 +22,8 @@ export function FormField({
   required?: boolean;
   error?: string;
   icon?: RemixName;
+  /** Icon tuỳ ý bên trái (vd. SVG xuất từ Figma) — dùng khi không có trong bộ Remix. */
+  leading?: ReactNode;
   right?: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -33,6 +36,7 @@ export function FormField({
         </AppText>
       )}
       <View style={[styles.input, multiline && styles.multiline, !!error && { borderColor: colors.error }]}>
+        {leading}
         {icon && <RIcon name={icon} size={20} color={colors.neutral60} />}
         <TextInput
           placeholderTextColor={colors.neutral60}

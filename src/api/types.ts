@@ -62,7 +62,17 @@ export type ProductQuery = {
   orderby?: ProductOrderBy;
   order?: 'asc' | 'desc';
   per_page?: number;
+  /** Lọc giá (VNĐ) — server hỗ trợ. */
+  min_price?: number;
+  max_price?: number;
+  /** 1 = chỉ sản phẩm đang khuyến mãi. */
+  on_sale?: 1;
+  stock_status?: 'instock';
 };
+
+/** GET /attributes — nhóm thuộc tính cho bộ lọc (terms là object đánh số, không phải mảng). */
+export type ApiAttributeTerm = { id: number; name: string; slug: string; count: number };
+export type ApiAttribute = { taxonomy: string; label: string; terms: Record<string, ApiAttributeTerm> | ApiAttributeTerm[] };
 
 /** /stores — phân trang per_page (tối đa 100), lọc province_code. Không có trường địa chỉ riêng. */
 export type ApiStore = {
@@ -143,6 +153,9 @@ export type AuthResponse = {
 
 /** /auth/otp/request — 404: số chưa có tài khoản, 429: quá giới hạn, 502 tgs_otp_send_failed: Zalo từ chối. */
 export type OtpRequestResponse = { success: boolean; expires_in?: number; channel?: 'zalo' | 'sms' | string; message?: string };
+
+/** PUT /auth/password — đổi thành công trả token mới, token cũ bị huỷ ngay. */
+export type ChangePasswordResponse = { success: boolean; status?: string; user_id?: number; token?: string; expires_at?: string; message?: string };
 
 /** Ảnh đại diện — POST (multipart, trường "avatar") / DELETE /customers/me/avatar. */
 export type AvatarResponse = { status?: string; avatar_url: string | null };

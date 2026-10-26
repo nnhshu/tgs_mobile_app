@@ -84,10 +84,11 @@ type ButtonProps = Omit<PressableProps, 'style'> & {
   size?: 'md' | 'sm';
   left?: ReactNode;
   style?: StyleProp<ViewStyle>;
+  textColor?: string;
 };
 
 /** Nút bo tròn 1000px cao 52 (Secondary/Main) như trong design. */
-export function Button({ title, variant = 'primary', size = 'md', left, disabled, style, ...rest }: ButtonProps) {
+export function Button({ title, variant = 'primary', size = 'md', left, disabled, style, textColor, ...rest }: ButtonProps) {
   return (
     <Pressable
       {...rest}
@@ -100,7 +101,7 @@ export function Button({ title, variant = 'primary', size = 'md', left, disabled
         style,
       ]}>
       {left}
-      <AppText variant={size === 'sm' ? 'bodySmallSemibold' : 'bodyMediumSemibold'} align="center">
+      <AppText variant={size === 'sm' ? 'bodySmallSemibold' : 'bodyMediumSemibold'} align="center" color={textColor}>
         {title}
       </AppText>
     </Pressable>

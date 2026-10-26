@@ -27,6 +27,8 @@ export type Product = {
   shortDescription?: string;
   descriptionHtml?: string;
   gallery?: ImageSourcePropType[];
+  /** Các tỉnh có bán (versions có giá) — dùng cho bộ lọc "Nơi bán". */
+  provinces?: string[];
   /** Phiên bản tỉnh/thành của chi nhánh đang chọn — gửi khi đặt hàng (version_slug). */
   versionSlug?: string;
   /** Giá chưa công bố (API trả price rỗng) → hiển thị "Liên hệ". */

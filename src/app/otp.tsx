@@ -2,41 +2,53 @@ import { useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useOtpRequest, useOtpVerify } from '@/api/hooks';
+import { ApiError } from '@/api/client';
+import { useOtpRequest, useOtpVerify, useRegisterOtpRequest, useRegisterOtpVerify } from '@/api/hooks';
 import { profileFromCustomer } from '@/api/mappers';
-import { ScreenHeader } from '@/components/headers';
-import { ResultDialog } from '@/components/overlays';
-import { AppText, Button, RIcon } from '@/components/ui';
+import { AuthResponse } from '@/api/types';
+import { icons } from '@/assets';
+import { SuccessToast } from '@/components/overlays';
+import { AppText, Button, Icon } from '@/components/ui';
 import { useLeaveAuth } from '@/hooks/use-leave-auth';
 import { useApp } from '@/store/app-store';
 import { colors } from '@/theme';
+import { formatPhoneDisplay } from '@/utils/validation';
 
 /** API gửi OTP 6 số. */
 const OTP_LENGTH = 6;
-/** Chờ trước khi cho gửi lại mã. */
-const RESEND_SECONDS = 60;
+/** Chờ trước khi cho gửi lại mã (Figma hiển thị "Gửi lại (01:28)"). */
+const RESEND_SECONDS = 90;
+/** Thời gian hiện thông báo "Đã xác nhận mã OTP thành công!" trước khi vào app. */
+const SUCCESS_MS = 1200;
 
 const mmss = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
 /**
- * Nhập mã xác thực / Mã OTP sai / OTP success.
- * POST /auth/otp/verify { phone, code } → { token, expires_at, customer }.
+ * Nhập mã xác thực / Điền số / Mã OTP sai / OTP success (Figma "Lần đầu đăng nhập").
+ * mode=register (SĐT chưa có tài khoản): POST /auth/register/verify; mode=login: POST /auth/otp/verify.
+ * Cả hai trả { token, expires_at, customer } → đăng nhập luôn.
  */
 export default function OtpScreen() {
-  const params = useLocalSearchParams<{ phone: string; redirect?: string; expiresIn?: string; channel?: string; message?: string }>();
+  const params = useLocalSearchParams<{ phone: string; mode?: 'login' | 'register'; redirect?: string; expiresIn?: string; channel?: string }>();
   const phone = params.phone;
+  const isRegister = params.mode === 'register';
+  const insets = useSafeAreaInsets();
   const { setSession } = useApp();
-  const verify = useOtpVerify();
-  const resend = useOtpRequest();
-  const { leave } = useLeaveAuth();
+  const loginVerify = useOtpVerify();
+  const registerVerify = useRegisterOtpVerify();
+  const loginResend = useOtpRequest();
+  const registerResend = useRegisterOtpRequest();
+  const verify = isRegister ? registerVerify : loginVerify;
+  const resend = isRegister ? registerResend : loginResend;
+  const { leave, close } = useLeaveAuth();
   const inputRef = useRef<TextInput>(null);
 
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [channel, setChannel] = useState(params.channel ?? '');
-  const [info, setInfo] = useState(params.message ?? '');
   const [resendIn, setResendIn] = useState(RESEND_SECONDS);
   const [expiresIn, setExpiresIn] = useState(Number(params.expiresIn) || 300);
 
@@ -49,8 +61,25 @@ export default function OtpScreen() {
     return () => clearInterval(id);
   }, []);
 
+  // OTP success: hiện thông báo một lúc rồi đóng luồng đăng nhập, mở màn đang chờ (vd. Checkout).
+  useEffect(() => {
+    if (!success) return;
+    const t = setTimeout(() => leave(params.redirect), SUCCESS_MS);
+    return () => clearTimeout(t);
+  }, [success, leave, params.redirect]);
+
+  const onVerified = (res: AuthResponse) => {
+    if (!res.token) {
+      setError('Máy chủ không trả phiên đăng nhập, vui lòng thử lại.');
+      return;
+    }
+    setSession(res.token, { phone, ...profileFromCustomer(res.customer, res.email) }, res.expires_at);
+    inputRef.current?.blur();
+    setSuccess(true);
+  };
+
   const submit = (value = code) => {
-    if (value.length !== OTP_LENGTH || verify.isPending) return;
+    if (value.length !== OTP_LENGTH || verify.isPending || success) return;
     if (expiresIn === 0) {
       setError('Mã OTP đã hết hạn. Vui lòng gửi lại mã mới.');
       return;
@@ -59,20 +88,9 @@ export default function OtpScreen() {
     verify.mutate(
       { phone, code: value },
       {
-        onSuccess: (res) => {
-          if (!res.token) {
-            setError('Máy chủ không trả phiên đăng nhập, vui lòng thử lại.');
-            return;
-          }
-          setSession(res.token, { phone, ...profileFromCustomer(res.customer, res.email) }, res.expires_at);
-          setSuccess(true);
-        },
-        // "Mã OTP sai" — 401 kèm thông báo của server.
-        onError: (e) => {
-          setError(e.message);
-          setCode('');
-          inputRef.current?.focus();
-        },
+        onSuccess: onVerified,
+        // "Mã OTP sai": giữ các số đã nhập (viền đỏ) để người dùng thấy và sửa.
+        onError: (e) => setError(e instanceof ApiError && e.status === 401 ? 'Mã OTP không chính xác' : e.message),
       },
     );
   };
@@ -86,51 +104,46 @@ export default function OtpScreen() {
         setResendIn(RESEND_SECONDS);
         setExpiresIn(res.expires_in ?? 300);
         if (res.channel) setChannel(res.channel);
-        setInfo(res.message ?? 'Đã gửi lại mã xác thực.');
+        inputRef.current?.focus();
       },
       // 429: quá số lần gửi, 502: Zalo từ chối gửi.
       onError: (e) => setError(e.message),
     });
   };
 
-  const finish = () => {
-    setSuccess(false);
-    // Đóng Đăng nhập + OTP rồi mở tiếp màn đang chờ (vd. Checkout).
-    leave(params.redirect);
-  };
-
-  const via = channel === 'zalo' ? 'qua Zalo' : 'qua tin nhắn SMS';
+  const canResend = resendIn === 0 && !resend.isPending;
 
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
-      <ScreenHeader title="Xác thực tài khoản" />
+      <Pressable onPress={close} hitSlop={10} style={[styles.close, { top: insets.top + 9 }]}>
+        <Icon source={icons.close} size={24} />
+      </Pressable>
+
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <View style={styles.content}>
-          <View style={{ gap: 12 }}>
-            <AppText variant="h4" align="center">
+        <View style={[styles.content, { paddingTop: insets.top + 120 }]}>
+          <View style={{ gap: 8, alignItems: 'center' }}>
+            <AppText variant="h5" align="center">
               Nhập mã xác thực
             </AppText>
-            <AppText color={colors.neutral70} align="center">
-              Mã gồm {OTP_LENGTH} chữ số đã được gửi {via} đến số <AppText weight="semibold">{phone}</AppText>
-            </AppText>
-            {channel === 'zalo' && (
-              <View style={styles.channel}>
-                <RIcon name="chat1Line" size={16} color={colors.primary} />
-                <AppText size={12} color={colors.primary}>
-                  Kiểm tra tin nhắn từ Zalo OA Thế Giới Sữa
-                </AppText>
-              </View>
-            )}
+            <View style={{ alignItems: 'center', gap: 2 }}>
+              <AppText size={12} color={colors.neutral70} align="center">
+                Mã OTP vừa được gửi {channel === 'zalo' ? 'qua Zalo ' : ''}đến số điện thoại
+              </AppText>
+              <AppText variant="bodySmallSemibold" align="center">
+                {formatPhoneDisplay(phone ?? '')}
+              </AppText>
+            </View>
           </View>
 
-          <View style={{ gap: 16, alignItems: 'center' }}>
+          <View style={{ gap: 12, alignItems: 'center' }}>
             <Pressable style={styles.boxes} onPress={() => inputRef.current?.focus()}>
               {Array.from({ length: OTP_LENGTH }).map((_, i) => {
-                const active = i === code.length;
+                const filled = i < code.length;
+                const active = i === code.length && !error;
                 return (
-                  <View key={i} style={[styles.box, active && styles.boxActive, !!error && styles.boxError]}>
-                    <AppText variant="h3" align="center">
+                  <View key={i} style={[styles.box, filled && styles.boxFilled, active && styles.boxActive, !!error && styles.boxError]}>
+                    <AppText size={24} weight="semibold" align="center">
                       {code[i] ?? ''}
                     </AppText>
                   </View>
@@ -154,23 +167,15 @@ export default function OtpScreen() {
               style={styles.hiddenInput}
             />
 
-            {error ? (
-              <AppText color={colors.error} align="center">
+            {!!error && (
+              <AppText size={12} color={colors.error} align="center">
                 {error}
               </AppText>
-            ) : info ? (
-              <AppText size={12} color={colors.neutral70} align="center">
-                {info}
-              </AppText>
-            ) : null}
+            )}
 
-            <AppText size={12} color={expiresIn > 0 ? colors.neutral60 : colors.error} align="center">
-              {expiresIn > 0 ? `Mã hết hạn sau ${mmss(expiresIn)}` : 'Mã đã hết hạn'}
-            </AppText>
-
-            <AppText variant="bodyMediumRegular" align="center">
+            <AppText align="center">
               Bạn không nhận được mã?{' '}
-              <AppText variant="bodyMediumRegular" weight="semibold" color={resendIn > 0 || resend.isPending ? colors.neutral60 : colors.primary} onPress={resendCode}>
+              <AppText color={colors.primary} onPress={canResend ? resendCode : undefined}>
                 {resend.isPending ? 'Đang gửi...' : 'Gửi lại'}
               </AppText>
               {resendIn > 0 && ` (${mmss(resendIn)})`}
@@ -179,24 +184,27 @@ export default function OtpScreen() {
 
           <Button
             title={verify.isPending ? 'Đang xác thực...' : 'Xác nhận'}
-            disabled={code.length !== OTP_LENGTH || verify.isPending}
+            disabled={code.length !== OTP_LENGTH || verify.isPending || success}
             onPress={() => submit()}
             style={{ marginTop: 'auto' }}
           />
         </View>
       </KeyboardAvoidingView>
-      <ResultDialog visible={success} title="Đăng nhập thành công!" message="Chào mừng bạn đến với Thế Giới Sữa." actionLabel="Bắt đầu mua sắm" onClose={finish} />
+
+      {/* OTP success: nền tối + thẻ thông báo */}
+      <SuccessToast visible={success} message="Đã xác nhận mã OTP thành công!" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.white },
-  content: { flex: 1, paddingTop: 48, paddingHorizontal: 12, paddingBottom: 16, gap: 28 },
-  channel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  close: { position: 'absolute', left: 12, zIndex: 1, backgroundColor: colors.background, borderRadius: 100, padding: 4 },
+  content: { flex: 1, paddingHorizontal: 12, paddingBottom: 12, gap: 32 },
   boxes: { flexDirection: 'row', gap: 8 },
-  box: { width: 48, height: 52, borderWidth: 1, borderColor: colors.neutral40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
+  box: { width: 44, height: 48, borderWidth: 1, borderColor: colors.neutral40, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
+  boxFilled: { borderColor: colors.neutral50 },
   boxActive: { borderColor: colors.primary },
-  boxError: { borderColor: colors.error, backgroundColor: colors.errorSurface },
+  boxError: { borderColor: colors.error },
   hiddenInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
 });

@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { ApiError } from '@/api/client';
 import { useCreateOrder, usePaymentMethods } from '@/api/hooks';
 import { readCreatedOrder } from '@/api/mappers';
 import { ScreenHeader } from '@/components/headers';
@@ -81,7 +82,11 @@ export default function PaymentProcessingScreen() {
           }
           router.replace({ pathname: '/order-success', params: { id: order.id } });
         },
-        onError: (e) => router.replace({ pathname: '/order-failed', params: { reason: e.message } }),
+        onError: (e) => {
+          // 409 tgs_duplicate_order: SĐT đã có đơn gần đây — gửi kèm link tra cứu đơn của website.
+          const lookupUrl = e instanceof ApiError && typeof e.data?.lookup_url === 'string' ? e.data.lookup_url : undefined;
+          router.replace({ pathname: '/order-failed', params: { reason: e.message, ...(lookupUrl ? { lookupUrl } : {}) } });
+        },
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps

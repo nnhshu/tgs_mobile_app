@@ -6,7 +6,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
-import { useAuthCheck, useLogin, useOtpRequest } from '@/api/hooks';
+import { useAuthCheck, useLogin, useOtpRequest, useRegisterOtpRequest } from '@/api/hooks';
 import { profileFromCustomer } from '@/api/mappers';
 import { AuthCheckResponse } from '@/api/types';
 import { icons, img } from '@/assets';
@@ -15,12 +15,12 @@ import { AppText, Button, Icon, RIcon } from '@/components/ui';
 import { useLeaveAuth } from '@/hooks/use-leave-auth';
 import { useApp } from '@/store/app-store';
 import { colors, fonts } from '@/theme';
-import { cleanPhone, VN_PHONE } from '@/utils/validation';
+import { cleanPhone, formatPhoneDisplay, VN_PHONE } from '@/utils/validation';
 
 /**
- * Đăng ký/Đăng nhập theo từng bước:
+ * Đăng ký/Đăng nhập theo từng bước (Figma "Lần đầu đăng nhập"):
  * 1. Nhập SĐT → POST /auth/check
- * 2a. Chưa có tài khoản → màn Đăng ký (điền sẵn SĐT)
+ * 2a. Chưa có tài khoản → POST /auth/register/otp → màn OTP (đăng ký bằng mã, không cần mật khẩu)
  * 2b. Có mật khẩu → nhập mật khẩu → POST /auth/login { method: "password" }
  * 2c. Chỉ OTP (hoặc người dùng chọn OTP) → POST /auth/otp/request → màn OTP
  */
@@ -31,6 +31,7 @@ export default function LoginScreen() {
   const toast = useToast();
   const check = useAuthCheck();
   const otpRequest = useOtpRequest();
+  const registerOtp = useRegisterOtpRequest();
   const login = useLogin();
   const { leave, close } = useLeaveAuth();
 
@@ -41,13 +42,13 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
 
   const p = cleanPhone(phone);
-  const busy = check.isPending || otpRequest.isPending || login.isPending;
+  const busy = check.isPending || otpRequest.isPending || registerOtp.isPending || login.isPending;
   const step: 'phone' | 'password' = account?.methods.password ? 'password' : 'phone';
 
-  const goRegister = () => router.push({ pathname: '/register', params: { ...(redirect ? { redirect } : {}), phone: p } });
 
   const editPhone = (t: string) => {
-    setPhone(t);
+    // Lưu chữ số, hiển thị dạng "0902 524 588".
+    setPhone(t.replace(/[^\d+]/g, ''));
     setError('');
     // Đổi số → quay lại bước kiểm tra.
     if (account) {
@@ -56,22 +57,34 @@ export default function LoginScreen() {
     }
   };
 
+  const openOtp = (mode: 'login' | 'register', res: { expires_in?: number; channel?: string; message?: string }) =>
+    router.push({
+      pathname: '/otp',
+      params: { phone: p, mode, ...(redirect ? { redirect } : {}), expiresIn: String(res.expires_in ?? 300), channel: res.channel ?? '', message: res.message ?? '' },
+    });
+
+  /** Lần đầu đăng nhập: SĐT chưa có tài khoản → gửi mã đăng ký. */
+  const sendRegisterOtp = () => {
+    setError('');
+    registerOtp.mutate(p, {
+      onSuccess: (res) => openOtp('register', res),
+      // 409: số vừa được đăng ký ở nơi khác → chuyển sang đăng nhập bằng mã.
+      onError: (e) => (e instanceof ApiError && e.code === 'tgs_phone_taken' ? sendOtp() : setError(e.message)),
+    });
+  };
+
   const sendOtp = () => {
     setError('');
     otpRequest.mutate(p, {
-      onSuccess: (res) =>
-        router.push({
-          pathname: '/otp',
-          params: { phone: p, redirect, expiresIn: String(res.expires_in ?? 300), channel: res.channel ?? '', message: res.message ?? '' },
-        }),
+      onSuccess: (res) => openOtp('login', res),
       // 404 chưa có tài khoản, 429 quá giới hạn, 502 Zalo từ chối gửi.
-      onError: (e) => (e instanceof ApiError && e.status === 404 ? goRegister() : setError(e.message)),
+      onError: (e) => (e instanceof ApiError && e.status === 404 ? sendRegisterOtp() : setError(e.message)),
     });
   };
 
   const checkPhone = () => {
     if (!VN_PHONE.test(p)) {
-      setError('Số điện thoại không hợp lệ. Vui lòng nhập số di động Việt Nam 10 số.');
+      setError('Số điện thoại không hợp lệ');
       return;
     }
     setError('');
@@ -79,8 +92,7 @@ export default function LoginScreen() {
       onSuccess: (res) => {
         if (res.status === 'not_registered') {
           if (res.can_register) {
-            toast(res.message ?? 'Số điện thoại chưa có tài khoản', 'informationLine');
-            goRegister();
+            sendRegisterOtp();
           } else {
             setError(res.message ?? 'Số điện thoại này chưa thể đăng ký.');
           }
@@ -157,14 +169,14 @@ export default function LoginScreen() {
                 <View style={[styles.input, !!error && step === 'phone' && { borderColor: colors.error }]}>
                   <Icon source={icons.phone} size={20} />
                   <TextInput
-                    value={phone}
+                    value={formatPhoneDisplay(phone)}
                     onChangeText={editPhone}
                     placeholder="Nhập số điện thoại"
                     placeholderTextColor={colors.neutral60}
                     keyboardType="phone-pad"
                     textContentType="telephoneNumber"
                     autoComplete="tel"
-                    maxLength={13}
+                    maxLength={15}
                     returnKeyType="done"
                     onSubmitEditing={step === 'phone' ? checkPhone : undefined}
                     style={styles.inputText}
@@ -175,6 +187,12 @@ export default function LoginScreen() {
                     </Pressable>
                   )}
                 </View>
+                {/* "Bị lỗi": viền đỏ + dòng lỗi ngay dưới ô nhập */}
+                {!!error && step === 'phone' && (
+                  <AppText size={12} color={colors.error}>
+                    {error}
+                  </AppText>
+                )}
               </View>
 
               {step === 'password' && (
@@ -215,7 +233,7 @@ export default function LoginScreen() {
                 </View>
               )}
 
-              {!!error && (
+              {!!error && step === 'password' && (
                 <View style={styles.errorBox}>
                   <RIcon name="errorWarningFill" size={16} color={colors.error} />
                   <AppText size={13} color={colors.error} style={{ flex: 1 }}>
@@ -257,12 +275,6 @@ export default function LoginScreen() {
             </View>
           </View>
           <View style={{ gap: 16 }}>
-            <AppText align="center">
-              Chưa có tài khoản?{' '}
-              <AppText weight="semibold" color={colors.primary} onPress={goRegister}>
-                Đăng ký ngay
-              </AppText>
-            </AppText>
             <AppText size={12} align="center" style={{ lineHeight: 18 }}>
               Khi tiếp tục, bạn đồng ý với{' '}
               <AppText size={12} weight="bold" onPress={() => router.push('/terms')}>

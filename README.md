@@ -66,7 +66,9 @@ App lấy dữ liệu sản phẩm từ `https://thegioisua.com/wp-json/tgs/v1` 
 | `POST /auth/otp/request` `{ phone }` | Gửi mã OTP: 404 → Đăng ký, 429/502 → hiện thông báo server |
 | `POST /auth/otp/verify` `{ phone, code }` | Màn OTP (6 số, đếm ngược hạn mã & gửi lại) |
 | `POST /auth/login` `{ method: "password", login, password }` | Đăng nhập bằng mật khẩu (401 `tgs_invalid_credentials`) |
+| `POST /auth/register/otp` `{ phone }` → `POST /auth/register/verify` `{ phone, code }` | Lần đầu đăng nhập: SĐT chưa có tài khoản nhận OTP, xác thực xong là có tài khoản + đăng nhập (409 `tgs_phone_taken` → chuyển sang OTP đăng nhập) |
 | `POST /auth/logout` | Gọi khi đăng xuất (Bearer token) |
+| `PUT /auth/password` `{ current_password, new_password }` | Tài khoản & Mật khẩu → Đổi mật khẩu (tối thiểu 8 ký tự). Trả token mới, token cũ bị huỷ → app lưu token mới |
 | `GET /customers/me/summary` | Tab Tài khoản — tên, SĐT, điểm, số đơn theo trạng thái (kéo xuống để làm mới) |
 | `GET /customers/me` | Màn Thông tin cá nhân |
 | `PUT /customers/me` `{ name, email, gender }` | Lưu Thông tin cá nhân — chỉ gửi trường đã đổi; gender: `male` / `female` / `other` |
@@ -77,6 +79,8 @@ App lấy dữ liệu sản phẩm từ `https://thegioisua.com/wp-json/tgs/v1` 
 | `PUT /customers/me/address-book/{id}` | Sửa địa chỉ |
 | `DELETE /customers/me/address-book/{id}` | Xoá địa chỉ |
 | `POST /customers/me/address-book/{id}/default` | Đặt địa chỉ mặc định |
+| `GET /attributes` | Bộ lọc sản phẩm — Thương hiệu (`product_brand`), Danh mục (`product_cat`); nhóm khác hiện chưa có giá trị |
+| `GET /products?category=&min_price=&max_price=&on_sale=1&stock_status=instock` | Lọc phía server (danh mục 1 id/lần, giá, khuyến mãi, còn hàng). Thương hiệu & Nơi bán lọc trên máy vì API chưa có tham số |
 | `POST /shipping/rates` `{ items, shipping }` | Checkout — danh sách phương thức giao + phí (id dùng làm `shipping_rate_id`) |
 | `GET /payment-methods` | Checkout — phương thức thanh toán (COD, VietQR) |
 | `POST /orders` `{ items[{product_id, quantity, version_slug}], billing, shipping, shipping_rate_id, payment_method, coupon_codes, customer_note }` | Đặt hàng (màn "Đang xử lý"). `version_slug` = phiên bản tỉnh của chi nhánh đang chọn; server trả link thanh toán thì app mở trình duyệt |

@@ -3,9 +3,11 @@ import * as Location from 'expo-location';
 import { useEffect, useMemo } from 'react';
 
 import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from '@/api/client';
+import { decodeEntities } from '@/api/html';
 import { Address, distanceKm, profileFromCustomer, toAddress, toAddressInput, toCategoryTree, toProduct, toShippingRate, toStore } from '@/api/mappers';
 import {
   ApiAddressBook,
+  ApiAttribute,
   ApiCategory,
   ApiProduct,
   ApiProductDetail,
@@ -14,6 +16,7 @@ import {
   AuthCheckResponse,
   AuthResponse,
   AvatarResponse,
+  ChangePasswordResponse,
   CustomerSummary,
   CustomerUpdate,
   ApiCustomer,
@@ -166,6 +169,16 @@ export function useOtpRequest() {
 
 export function useOtpVerify() {
   return useMutation({ mutationFn: (input: { phone: string; code: string }) => apiPost<AuthResponse>('/auth/otp/verify', input) });
+}
+
+/** Đăng ký lần đầu bằng OTP: gửi mã tới SĐT chưa có tài khoản (409 tgs_phone_taken nếu đã có). */
+export function useRegisterOtpRequest() {
+  return useMutation({ mutationFn: (phone: string) => apiPost<OtpRequestResponse>('/auth/register/otp', { phone }) });
+}
+
+/** Xác thực mã đăng ký → tạo tài khoản + trả phiên đăng nhập. */
+export function useRegisterOtpVerify() {
+  return useMutation({ mutationFn: (input: { phone: string; code: string }) => apiPost<AuthResponse>('/auth/register/verify', input) });
 }
 
 /* ---------- Khách hàng (cần token) ---------- */
@@ -341,4 +354,51 @@ export function useCreateOrder() {
     mutationFn: (input: CreateOrderInput) => apiPost<CreateOrderResponse>('/orders', input, token),
     onSuccess: () => client.invalidateQueries({ queryKey: ['customer'] }),
   });
+}
+
+/* ---------- Bảo mật ---------- */
+
+/**
+ * Đổi mật khẩu — PUT /auth/password { current_password, new_password }.
+ * Server huỷ token cũ và trả token mới → lưu lại ngay để không bị đăng xuất.
+ */
+export function useChangePassword() {
+  const { token, setSession } = useApp();
+  return useMutation({
+    mutationFn: (input: { current_password: string; new_password: string }) => apiPut<ChangePasswordResponse>('/auth/password', input, token),
+    onSuccess: (res) => {
+      if (res.token) setSession(res.token, undefined, res.expires_at);
+    },
+  });
+}
+
+/* ---------- Bộ lọc ---------- */
+
+export type FilterTerm = { id: number; name: string; count: number };
+
+/**
+ * Thuộc tính cho bộ lọc — GET /attributes. Chỉ lấy nhóm có dữ liệu: Thương hiệu, Danh mục
+ * (các nhóm Độ tuổi, Dung tích... trên website hiện chưa có giá trị).
+ */
+export function useFilterAttributes() {
+  const query = useQuery({
+    queryKey: ['attributes'],
+    queryFn: ({ signal }) => apiGet<ApiAttribute[]>('/attributes', undefined, signal),
+    staleTime: 60 * 60 * 1000,
+  });
+  return useMemo(() => {
+    const termsOf = (taxonomy: string): FilterTerm[] => {
+      const attr = query.data?.find((a) => a.taxonomy === taxonomy);
+      const terms = attr ? (Array.isArray(attr.terms) ? attr.terms : Object.values(attr.terms)) : [];
+      return terms
+        .filter((t) => t.count > 0)
+        .map((t) => ({ id: t.id, name: decodeEntities(t.name), count: t.count }))
+        .sort((a, b) => b.count - a.count);
+    };
+    return {
+      ...query,
+      brands: termsOf('product_brand'),
+      categories: termsOf('product_cat').filter((c) => !/chưa phân loại/i.test(c.name)),
+    };
+  }, [query]);
 }

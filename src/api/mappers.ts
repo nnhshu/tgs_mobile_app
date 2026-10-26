@@ -54,6 +54,7 @@ export function toProduct(api: ApiProduct, province?: string): Product {
     badge: discount >= 5 ? { label: `-${discount}%`, tone: 'sale' } : undefined,
     sku: branch?.sku || api.sku,
     versionSlug: branch?.slug,
+    provinces: api.versions?.filter((v) => toNumber(v.price) > 0).map((v) => normalize(v.name)),
     url: api.url,
     categoryIds: api.category_ids,
     shortDescription: api.short_description ? htmlToText(api.short_description) : undefined,

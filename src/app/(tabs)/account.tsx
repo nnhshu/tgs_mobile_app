@@ -14,7 +14,9 @@ import { PointsPill } from '@/components/points-pill';
 import { BottomSheet, ConfirmDialog, useToast } from '@/components/overlays';
 import { AppText, Button, Icon, IconBadgeButton, Photo, RIcon, Toggle } from '@/components/ui';
 import { OrderStatus } from '@/data/mock-extra';
+import { RemixName } from '@/remix-icons';
 import { useApp } from '@/store/app-store';
+import { goToLogin } from '@/utils/navigation';
 import { blueGradient, colors } from '@/theme';
 
 const ORDER_STATUSES: { label: OrderStatus; icon: number; size: number }[] = [
@@ -61,10 +63,10 @@ function MenuGroup({ title, titleSize = 18, children }: { title: string; titleSi
   );
 }
 
-function MenuRow({ icon, label, right, textColor = colors.neutral90, onPress }: { icon: number; label: string; right?: ReactNode; textColor?: string; onPress?: () => void }) {
+function MenuRow({ icon, label, right, textColor = colors.neutral90, onPress }: { icon: number | RemixName; label: string; right?: ReactNode; textColor?: string; onPress?: () => void }) {
   return (
     <Pressable onPress={onPress} style={styles.menuRow}>
-      <Icon source={icon} size={20} />
+      {typeof icon === 'string' ? <RIcon name={icon} size={20} color={colors.neutral90} /> : <Icon source={icon} size={20} />}
       <AppText variant="bodyMedium" color={textColor} style={{ flex: 1 }}>
         {label}
       </AppText>
@@ -161,7 +163,7 @@ export default function AccountScreen() {
                   <Icon source={icons.edit} size={16} />
                 </View>
               </Pressable>
-              <Pressable style={{ flex: 1, gap: 4 }} onPress={() => router.push('/profile-edit')}>
+              <Pressable style={{ flex: 1, gap: 4 }} onPress={() => router.push('/profile-info')}>
                 <AppText variant="h4" color={colors.white} numberOfLines={1}>
                   {profile.name || profile.phone || 'Khách hàng'}
                 </AppText>
@@ -236,7 +238,7 @@ export default function AccountScreen() {
           <SectionGap />
 
           <MenuGroup title="Tài khoản">
-            <MenuRow icon={icons.user} label="Thông tin cá nhân" onPress={guard(() => router.push('/profile-edit'))} />
+            <MenuRow icon={icons.user} label="Thông tin cá nhân" onPress={guard(() => router.push('/profile-info'))} />
             <MenuRow icon={icons.address} label="Địa chỉ giao hàng" onPress={guard(() => router.push('/addresses'))} />
             <MenuRow icon={icons.payment} label="Quản lý Thanh toán" onPress={guard(() => router.push('/payment-methods'))} />
           </MenuGroup>
@@ -319,15 +321,16 @@ export default function AccountScreen() {
       {/* Log out */}
       <ConfirmDialog
         visible={dialog === 'logout'}
-        title="Đăng xuất"
-        message="Bạn có chắc muốn đăng xuất khỏi tài khoản này?"
-        confirmLabel="Đăng xuất"
+        title={'Bạn có chắc chắn muốn\nthoát không?'}
+        confirmLabel="Thoát"
+        cancelLabel="Huỷ bỏ"
         destructive
         onCancel={() => setDialog(null)}
         onConfirm={() => {
           setDialog(null);
           logout();
           toast('Đã đăng xuất');
+          goToLogin();
         }}
       />
       <ConfirmDialog
@@ -341,6 +344,7 @@ export default function AccountScreen() {
           setDialog(null);
           logout();
           toast('Yêu cầu xoá tài khoản đã được ghi nhận', 'informationLine');
+          goToLogin();
         }}
       />
     </View>

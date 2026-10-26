@@ -104,6 +104,10 @@ export const remix = {
   handHeartLine: require('@/assets/remix/hand-heart-line.svg'),
   teamLine: require('@/assets/remix/team-line.svg'),
   qrCodeLine: require('@/assets/remix/qr-code-line.svg'),
+  home5Line: require('@/assets/remix/home-5-line.svg'),
+  heart3Fill: require('@/assets/remix/heart-3-fill.svg'),
+  heart3Line: require('@/assets/remix/heart-3-line.svg'),
+  loginBoxLine: require('@/assets/remix/login-box-line.svg'),
 } as const;
 
 export type RemixName = keyof typeof remix;

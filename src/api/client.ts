@@ -1,3 +1,4 @@
+import { decodeEntities } from '@/api/html';
 import { logError, logStart, logSuccess } from '@/api/logger';
 
 /**
@@ -13,6 +14,8 @@ export class ApiError extends Error {
     message: string,
     public status?: number,
     public code?: string,
+    /** data của lỗi WordPress (vd. tgs_duplicate_order trả kèm lookup_url). */
+    public data?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -21,8 +24,9 @@ export class ApiError extends Error {
 /** Đọc lỗi WordPress { code, message, data.status } → ApiError (message tiếng Việt từ server). */
 function errorFrom(text: string, status: number) {
   try {
-    const body = JSON.parse(text) as { code?: string; message?: string };
-    if (body.message) return { error: new ApiError(body.message, status, body.code), body };
+    const body = JSON.parse(text) as { code?: string; message?: string; data?: Record<string, unknown> };
+    // Message có thể chứa HTML entity (vd. "543.000&nbsp;VNĐ").
+    if (body.message) return { error: new ApiError(decodeEntities(body.message), status, body.code, body.data), body };
   } catch {
     // body không phải JSON
   }

@@ -10,6 +10,7 @@ import Animated, {
   useSharedValue,
   withRepeat,
   withTiming,
+  ZoomIn,
 } from 'react-native-reanimated';
 import { useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -97,7 +98,7 @@ export function ConfirmDialog({
         <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
         <Animated.View entering={FadeInDown.duration(220)} style={styles.dialog}>
           <Pressable onPress={onCancel} hitSlop={10} style={styles.dialogClose}>
-            <Icon source={icons.closeLine} size={20} />
+            <Icon source={icons.closeLine} size={24} />
           </Pressable>
           {icon}
           <View style={{ gap: 8, alignItems: 'center' }}>
@@ -112,12 +113,8 @@ export function ConfirmDialog({
           </View>
           {children}
           <View style={styles.dialogActions}>
-            {cancelLabel && <Button title={cancelLabel} variant="outline" onPress={onCancel} style={styles.dialogBtnOutline} />}
-            <Button
-              title={confirmLabel}
-              onPress={onConfirm}
-              style={[{ flex: 1 }, destructive && { backgroundColor: colors.error }]}
-            />
+            {cancelLabel && <Button title={cancelLabel} variant="outline" onPress={onCancel} style={[styles.dialogBtn, styles.dialogBtnOutline]} />}
+            <Button title={confirmLabel} onPress={onConfirm} style={[styles.dialogBtn, !cancelLabel && { flex: 1 }, destructive && { backgroundColor: colors.error }]} />
           </View>
         </Animated.View>
       </View>
@@ -238,11 +235,16 @@ const styles = StyleSheet.create({
     borderTopColor: colors.neutral30,
     backgroundColor: colors.white,
   },
-  dialogRoot: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  dialog: { width: '100%', maxWidth: 360, backgroundColor: colors.white, borderRadius: 16, padding: 20, paddingTop: 28, gap: 20, alignItems: 'center' },
-  dialogClose: { position: 'absolute', top: 12, right: 12 },
-  dialogActions: { flexDirection: 'row', gap: 8, alignSelf: 'stretch' },
-  dialogBtnOutline: { flex: 1, borderColor: colors.neutral40 },
+  // Figma "Log out" (7120:15375): nền mờ 35%, thẻ 341px bo 16, nút X 24px góc phải, 2 nút 131px căn giữa.
+  dialogRoot: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 26 },
+  dialog: { width: '100%', maxWidth: 341, backgroundColor: colors.white, borderRadius: 16, paddingTop: 8, paddingBottom: 24, paddingHorizontal: 12, gap: 12, alignItems: 'center' },
+  dialogClose: { alignSelf: 'flex-end' },
+  dialogActions: { flexDirection: 'row', gap: 8, alignSelf: 'stretch', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12 },
+  dialogBtn: { width: 131, height: 48 },
+  dialogBtnOutline: { height: 44, borderColor: colors.neutral40 },
+  successRoot: { ...StyleSheet.absoluteFill, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  successCard: { alignSelf: 'stretch', alignItems: 'center', gap: 10, padding: 16, borderRadius: 8, backgroundColor: 'rgba(30,30,30,0.9)' },
+  successIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center' },
   toast: {
     position: 'absolute',
     alignSelf: 'center',
@@ -258,3 +260,23 @@ const styles = StyleSheet.create({
   loading: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center' },
   loadingBox: { alignItems: 'center', gap: 12 },
 });
+
+/**
+ * Thông báo thành công giữa màn hình: nền mờ + thẻ tối có dấu ✓ xanh
+ * (Figma "02_Toast Noti_Đã thêm vào giỏ", "OTP success").
+ */
+export function SuccessToast({ visible, message }: { visible: boolean; message: string }) {
+  if (!visible) return null;
+  return (
+    <Animated.View entering={FadeIn.duration(150)} style={[styles.successRoot, { pointerEvents: 'none' }]}>
+      <Animated.View entering={ZoomIn.springify()} style={styles.successCard}>
+        <View style={styles.successIcon}>
+          <RIcon name="checkLine" size={16} color={colors.white} />
+        </View>
+        <AppText size={12} weight="medium" color={colors.white} align="center">
+          {message}
+        </AppText>
+      </Animated.View>
+    </Animated.View>
+  );
+}

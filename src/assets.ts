@@ -190,6 +190,14 @@ export const icons = {
   help: require('@/assets/figma/account/ic-help.svg'),
   terms: require('@/assets/figma/account/ic-terms.svg'),
   about: require('@/assets/figma/account/ic-about.svg'),
+  // Thông tin cá nhân / Chỉnh sửa thông tin (Figma 7120:14806, 7120:15153)
+  inputUser: require('@/assets/figma/account/input-user.svg'),
+  inputMail: require('@/assets/figma/account/input-mail.svg'),
+  inputGender: require('@/assets/figma/account/input-gender.svg'),
+  inputPhone: require('@/assets/figma/account/input-phone.svg'),
+  inputChevronDown: require('@/assets/figma/account/input-chevron-down.svg'),
+  editPrimary: require('@/assets/figma/account/edit-primary.svg'),
+  moreFill: require('@/assets/figma/account/more-fill.svg'),
   logout: require('@/assets/figma/account/ic-logout.svg'),
 
   // search

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, Share, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,7 +10,7 @@ import { formatAddress } from '@/api/mappers';
 import { parseSections, parseSpecTable } from '@/api/html';
 import { icons } from '@/assets';
 import { Skeleton } from '@/components/form';
-import { BottomSheet, useToast } from '@/components/overlays';
+import { BottomSheet, SuccessToast, useToast } from '@/components/overlays';
 import { ProductImage } from '@/components/product-card';
 import { ApiProductRail, ProductRow } from '@/components/product-rail';
 import { StateView } from '@/components/state-view';
@@ -20,15 +20,16 @@ import { useApp } from '@/store/app-store';
 import { colors, priceLabel } from '@/theme';
 import { safeBack } from '@/utils/navigation';
 
-function OptionChips({ label, options, value, onChange }: { label: string; options: string[]; value: string | null; onChange: (v: string) => void }) {
+/** Nhóm quy cách (Trọng lượng, Vị...). error = chưa chọn khi bấm mua → nhãn + viền đỏ (Figma "02_Chưa chọn quy cách"). */
+function OptionChips({ label, options, value, onChange, error }: { label: string; options: string[]; value: string | null; onChange: (v: string) => void; error?: boolean }) {
   return (
     <View style={{ gap: 8 }}>
-      <AppText color={colors.neutral80}>{label}:</AppText>
+      <AppText color={error ? colors.error : colors.neutral80}>{label}:</AppText>
       <View style={styles.chips}>
         {options.map((o) => {
           const selected = o === value;
           return (
-            <Pressable key={o} onPress={() => onChange(o)} style={[styles.optionChip, selected && styles.optionChipActive]}>
+            <Pressable key={o} onPress={() => onChange(o)} style={[styles.optionChip, selected && styles.optionChipActive, error && styles.optionChipError]}>
               <AppText color={selected ? colors.primary : colors.text}>{o}</AppText>
             </Pressable>
           );
@@ -67,9 +68,18 @@ export default function ProductDetailScreen() {
   const [headerSolid, setHeaderSolid] = useState(false);
   const [options, setOptions] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState(1);
-  const [variantSheet, setVariantSheet] = useState<'cart' | 'buy' | null>(null);
   const [showVariantError, setShowVariantError] = useState(false);
   const [loginSheet, setLoginSheet] = useState(false);
+  const [added, setAdded] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const optionsY = useRef(0);
+
+  // "Đã thêm vào giỏ hàng" hiện 1,5 giây.
+  useEffect(() => {
+    if (!added) return;
+    const t = setTimeout(() => setAdded(false), 1500);
+    return () => clearTimeout(t);
+  }, [added]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setExpanded((e) => ({ ...e, [k]: !e[k] }));
 
@@ -117,19 +127,19 @@ export default function ProductDetailScreen() {
   const visibleSpecs = expanded.info ? specs : specs.slice(0, 4);
 
   const commit = (mode: 'cart' | 'buy') => {
+    // Chưa chọn quy cách → báo lỗi ngay trên trang và cuộn tới chỗ cần chọn.
     if (missing.length) {
-      setShowVariantError(variantSheet !== null);
-      setVariantSheet(mode);
+      setShowVariantError(true);
+      scrollRef.current?.scrollTo({ y: Math.max(optionsY.current - 120, 0), animated: true });
       return;
     }
-    setVariantSheet(null);
     setShowVariantError(false);
     if (mode === 'buy' && !isLoggedIn) {
       setLoginSheet(true);
       return;
     }
     addToCart(product, quantity, variantLabel, raw);
-    if (mode === 'cart') toast('Đã thêm vào giỏ hàng');
+    if (mode === 'cart') setAdded(true);
     else router.push('/cart');
   };
 
@@ -140,6 +150,7 @@ export default function ProductDetailScreen() {
     <View style={styles.screen}>
       <StatusBar style="dark" />
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ gap: 8, paddingBottom: 24 }}
         scrollEventThrottle={32}
@@ -192,7 +203,7 @@ export default function ProductDetailScreen() {
                 toggleWishlist(product.id);
                 toast(liked ? 'Đã bỏ khỏi danh sách yêu thích' : 'Đã thêm vào danh sách yêu thích', liked ? 'informationLine' : 'checkboxCircleFill');
               }}>
-              {liked ? <RIcon name="starFill" size={20} color={colors.error} /> : <Icon source={icons.heart} size={20} />}
+              <RIcon name={liked ? 'heart3Fill' : 'heart3Line'} size={20} color={liked ? colors.error : colors.neutral70} />
             </Pressable>
           </View>
           <View style={styles.rowGap6}>
@@ -202,10 +213,8 @@ export default function ProductDetailScreen() {
                 <Pressable onPress={() => router.push({ pathname: '/product-list', params: { title: brand, search: brand } })}>
                   <AppText color={colors.primary}>{brand}</AppText>
                 </Pressable>
-                <View style={styles.vline} />
               </>
             )}
-            {product.sku && <AppText color={colors.neutral70}>SKU: {product.sku}</AppText>}
           </View>
           <View style={[styles.rowGap6, { gap: 8 }]}>
             <AppText variant="h3" color={product.contactPrice ? colors.primary : colors.text}>
@@ -235,9 +244,25 @@ export default function ProductDetailScreen() {
               {product.shortDescription}
             </AppText>
           )}
-          {attributes.map((a) => (
-            <OptionChips key={a.name} label={a.name} options={a.options} value={options[a.name] ?? null} onChange={(v) => setOptions((o) => ({ ...o, [a.name]: v }))} />
-          ))}
+          {attributes.length > 0 && (
+            <View style={{ gap: 12 }} onLayout={(e) => (optionsY.current = e.nativeEvent.layout.y + 420)}>
+              {showVariantError && missing.length > 0 && (
+                <View style={styles.variantError}>
+                  <AppText color={colors.error}>Vui lòng chọn {missing[0].name.toLowerCase()}</AppText>
+                </View>
+              )}
+              {attributes.map((a) => (
+                <OptionChips
+                  key={a.name}
+                  label={a.name}
+                  options={a.options}
+                  value={options[a.name] ?? null}
+                  error={showVariantError && !options[a.name]}
+                  onChange={(v) => setOptions((o) => ({ ...o, [a.name]: v }))}
+                />
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Thông tin vận chuyển */}
@@ -412,7 +437,7 @@ export default function ProductDetailScreen() {
         <AppText weight="semibold" numberOfLines={1} style={{ flex: 1, marginHorizontal: 12, opacity: headerSolid ? 1 : 0 }}>
           {product.name}
         </AppText>
-        <IconBadgeButton icon={icons.cartDark} count={cartCount} background="rgba(255,255,255,0.75)" badgeColor={colors.error} onPress={() => router.push('/cart')} />
+        <IconBadgeButton icon={icons.cartDark} count={cartCount} background="transparent" badgeColor={colors.error} onPress={() => router.push('/cart')} />
         <Pressable onPress={share} hitSlop={8} style={{ marginLeft: 12 }}>
           <Icon source={icons.more} size={24} />
         </Pressable>
@@ -457,74 +482,39 @@ export default function ProductDetailScreen() {
         )}
       </View>
 
-      {/* 02_Chưa chọn quy cách */}
-      <BottomSheet
-        visible={variantSheet !== null}
-        onClose={() => {
-          setVariantSheet(null);
-          setShowVariantError(false);
-        }}
-        footer={
-          <Button
-            title={variantSheet === 'buy' ? 'Mua ngay' : 'Thêm vào giỏ hàng'}
-            onPress={() => {
-              setShowVariantError(true);
-              if (variantSheet) commit(variantSheet);
-            }}
-          />
-        }>
-        <View style={{ gap: 16, paddingBottom: 12 }}>
-          <View style={styles.sheetProduct}>
-            <ProductImage product={product} size={88} radius={6} />
-            <View style={{ flex: 1, gap: 4 }}>
-              <AppText numberOfLines={2}>{product.name}</AppText>
-              <AppText variant="h5" color={colors.error}>
-                {priceLabel(product.price)}
-              </AppText>
-            </View>
-          </View>
-          {attributes.map((a) => (
-            <OptionChips key={a.name} label={a.name} options={a.options} value={options[a.name] ?? null} onChange={(v) => setOptions((o) => ({ ...o, [a.name]: v }))} />
-          ))}
-          {showVariantError && missing.length > 0 && (
-            <View style={styles.variantError}>
-              <RIcon name="errorWarningFill" size={18} color={colors.error} />
-              <AppText color={colors.error}>Vui lòng chọn {missing[0].name.toLowerCase()}</AppText>
-            </View>
-          )}
-        </View>
-      </BottomSheet>
-
       {/* 02_Khách bấm Mua ngay - Login Form */}
-      <BottomSheet
-        visible={loginSheet}
-        onClose={() => setLoginSheet(false)}
-        title="Đăng nhập để mua hàng"
-        footer={
-          <View style={{ gap: 8 }}>
+      <BottomSheet visible={loginSheet} onClose={() => setLoginSheet(false)}>
+        <View style={styles.loginSheet}>
+          <View style={styles.loginIcon}>
+            <RIcon name="loginBoxLine" size={28} color={colors.white} />
+          </View>
+          <View style={{ gap: 8, alignItems: 'center' }}>
+            <AppText variant="h5" align="center">
+              Đăng nhập để tiếp tục
+            </AppText>
+            <AppText color={colors.neutral70} align="center">
+              Bạn cần đăng nhập để mua hàng và tích điểm
+            </AppText>
+          </View>
+          <View style={{ alignSelf: 'stretch', gap: 4 }}>
             <Button
               title="Đăng nhập / Đăng ký"
               onPress={() => {
                 setLoginSheet(false);
+                // Giữ sản phẩm trong giỏ, đăng nhập xong mở Giỏ hàng để đặt tiếp.
                 addToCart(product, quantity, variantLabel, raw);
                 router.push({ pathname: '/login', params: { redirect: '/cart' } });
               }}
             />
-            <Button
-              title="Thêm vào giỏ, mua sau"
-              variant="outline"
-              onPress={() => {
-                setLoginSheet(false);
-                addToCart(product, quantity, variantLabel, raw);
-                toast('Đã thêm vào giỏ hàng');
-              }}
-            />
+            <Pressable onPress={() => setLoginSheet(false)} style={styles.later}>
+              <AppText variant="bodyMedium">Để sau</AppText>
+            </Pressable>
           </View>
-        }>
-        <AppText color={colors.neutral70} align="center" style={{ paddingBottom: 12 }}>
-          Đăng nhập để đặt hàng nhanh hơn, tích điểm thành viên và theo dõi đơn hàng của bạn.
-        </AppText>
+        </View>
       </BottomSheet>
+
+      {/* 02_Toast Noti_Đã thêm vào giỏ */}
+      <SuccessToast visible={added} message="Đã thêm vào giỏ hàng" />
     </View>
   );
 }
@@ -542,6 +532,7 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 8 },
   optionChip: { height: 36, paddingHorizontal: 16, borderRadius: 6, borderWidth: 1, borderColor: colors.neutral40, backgroundColor: colors.white, justifyContent: 'center' },
   optionChipActive: { borderColor: colors.primary, backgroundColor: colors.primarySurface },
+  optionChipError: { borderColor: colors.error },
   shipRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
   infoLabel: { width: 140 },
@@ -552,7 +543,10 @@ const styles = StyleSheet.create({
   headerBg: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: colors.white, boxShadow: '0px 4px 4px rgba(9,30,66,0.05)' },
   floatingHeader: { position: 'absolute', left: 0, right: 0, height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
   sheetProduct: { flexDirection: 'row', gap: 12, alignItems: 'center' },
-  variantError: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.errorSurface, padding: 8, borderRadius: 6 },
+  variantError: { backgroundColor: colors.errorSurface, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4 },
+  loginSheet: { alignItems: 'center', gap: 20, paddingTop: 8, paddingBottom: 8 },
+  loginIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  later: { height: 48, alignItems: 'center', justifyContent: 'center' },
   bottomBar: { backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.neutral40, boxShadow: '0px -8px 9px rgba(0,0,0,0.08)' },
   qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8 },
   actions: { flexDirection: 'row', gap: 8, paddingHorizontal: 12 },

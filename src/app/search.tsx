@@ -47,10 +47,10 @@ export default function SearchScreen() {
   const [focused, setFocused] = useState(!params.q);
 
   const results = useProducts({ search: submitted }, { enabled: !!submitted });
-  // Gợi ý khi gõ: gọi API tìm kiếm (6 kết quả) sau 300ms ngừng gõ.
+  // Gợi ý khi gõ (Search Focus & Suggestion): GET /products?search= sau 300ms ngừng gõ, lấy tên sản phẩm làm từ khoá gợi ý.
   const debounced = useDebounce(text.trim(), 300);
   const suggestQuery = useProducts({ search: debounced, per_page: 6 }, { enabled: focused && debounced.length >= 2 });
-  const suggestions = useMemo(() => suggestQuery.products.map((p) => ({ id: p.id, name: p.name })), [suggestQuery.products]);
+  const suggestions = useMemo(() => [...new Set(suggestQuery.products.map((p) => p.name))], [suggestQuery.products]);
   const gridItemWidth = Math.floor((width - 24 - 12) / 2);
 
   const submit = (keyword: string) => {
@@ -111,16 +111,11 @@ export default function SearchScreen() {
 
       {typing ? (
         <ScrollView style={styles.white} contentContainerStyle={styles.suggestions} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => submit(text)} style={styles.suggestionRow}>
-            <Icon source={icons.searchGray} size={20} />
-            <AppText variant="bodyMediumRegular" color={colors.primary} style={{ flex: 1 }} numberOfLines={1}>
-              Tìm “{text.trim()}”
-            </AppText>
-          </Pressable>
           {suggestQuery.isFetching && suggestions.length === 0 && <SpinningLoader size={24} />}
-          {suggestions.map((s) => (
-            <Pressable key={s.id} onPress={() => router.push({ pathname: '/product/[id]', params: { id: s.id } })} style={styles.suggestionRow}>
-              <HighlightText text={s.name} keyword={text} />
+          {/* Bấm gợi ý → tìm theo từ khoá đó (List search); phần khớp với chữ đang gõ in đậm */}
+          {suggestions.map((name) => (
+            <Pressable key={name} onPress={() => submit(name)} style={styles.suggestionRow}>
+              <HighlightText text={name} keyword={text} />
             </Pressable>
           ))}
         </ScrollView>
