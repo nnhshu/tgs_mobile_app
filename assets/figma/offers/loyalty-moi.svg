@@ -1,0 +1,15 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="loyalty 4">
+<rect x="1.5" y="1.5" width="27" height="27" rx="13.5" fill="white"/>
+<rect x="1.5" y="1.5" width="27" height="27" rx="13.5" stroke="url(#paint0_radial_0_334)" stroke-width="3"/>
+<path id="Vector" d="M15 25.5C20.799 25.5 25.5 20.799 25.5 15C25.5 9.20101 20.799 4.5 15 4.5C9.20101 4.5 4.5 9.20101 4.5 15C4.5 20.799 9.20101 25.5 15 25.5Z" fill="#F5F5F5"/>
+<path id="Vector_2" d="M15 23.25C19.5563 23.25 23.25 19.5563 23.25 15C23.25 10.4437 19.5563 6.75 15 6.75C10.4437 6.75 6.75 10.4437 6.75 15C6.75 19.5563 10.4437 23.25 15 23.25Z" fill="#DEDEDE"/>
+<path id="Vector_3" d="M15.3156 10.2489L16.6313 12.9148L19.5733 13.3423C19.8619 13.3842 19.9772 13.739 19.7683 13.9426L17.6395 16.0177L18.142 18.9478C18.1913 19.2353 17.8896 19.4545 17.6314 19.3188L15 17.9353L12.3685 19.3188C12.1104 19.4545 11.8086 19.2353 11.8579 18.9478L12.3605 16.0177L10.2316 13.9426C10.0227 13.739 10.138 13.3842 10.4266 13.3423L13.3686 12.9148L14.6843 10.2489C14.8134 9.9873 15.1865 9.9873 15.3156 10.2489Z" fill="#BFC6CC"/>
+</g>
+<defs>
+<radialGradient id="paint0_radial_0_334" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(15.0305 14.662) rotate(90) scale(9.40845 20.8518)">
+<stop stop-color="#4B8FE6"/>
+<stop offset="1" stop-color="#0042BC"/>
+</radialGradient>
+</defs>
+</svg>

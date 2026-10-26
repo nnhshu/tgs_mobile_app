@@ -1,0 +1,11 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Account &#38; Security Icon">
+<path id="Vector" d="M16.6667 18.3333H3.33333V16.6667C3.33333 14.3655 5.19882 12.5 7.5 12.5H12.5C14.8012 12.5 16.6667 14.3655 16.6667 16.6667V18.3333ZM10 10.8333C7.23857 10.8333 5 8.59475 5 5.83333C5 3.07191 7.23857 0.833333 10 0.833333C12.7614 0.833333 15 3.07191 15 5.83333C15 8.59475 12.7614 10.8333 10 10.8333Z" fill="url(#paint0_radial_0_279)"/>
+</g>
+<defs>
+<radialGradient id="paint0_radial_0_279" cx="0" cy="0" r="1" gradientTransform="matrix(1.55039 9.07407 -15.3225 11.4386 6.89923 3.10185)" gradientUnits="userSpaceOnUse">
+<stop stop-color="#4B8FE6"/>
+<stop offset="1" stop-color="#0042BC"/>
+</radialGradient>
+</defs>
+</svg>

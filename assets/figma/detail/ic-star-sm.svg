@@ -1,0 +1,11 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Star Icon">
+<path id="Vector" d="M7.00035 10.6517L2.88584 12.9548L3.80478 8.32994L0.342936 5.12855L5.02538 4.57337L7.00035 0.291667L8.97528 4.57337L13.6577 5.12855L10.1959 8.32994L11.1148 12.9548L7.00035 10.6517Z" fill="url(#paint0_linear_0_348)"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_348" x1="7.00032" y1="0.291667" x2="7.00032" y2="12.9548" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FDD835"/>
+<stop offset="1" stop-color="#FBC02D"/>
+</linearGradient>
+</defs>
+</svg>

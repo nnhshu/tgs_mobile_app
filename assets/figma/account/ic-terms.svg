@@ -1,0 +1,11 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="My Address Icon">
+<path id="Vector" d="M17.5 2.5C17.9602 2.5 18.3333 2.8731 18.3333 3.33333V15C18.3333 15.4602 17.9602 15.8333 17.5 15.8333H5.37917L1.66667 18.75V3.33333C1.66667 2.8731 2.03977 2.5 2.5 2.5H17.5ZM10.8333 5.83333H9.16667V12.5H10.8333V5.83333ZM14.1667 7.5H12.5V12.5H14.1667V7.5ZM7.5 9.16667H5.83333V12.5H7.5V9.16667Z" fill="url(#paint0_radial_0_291)"/>
+</g>
+<defs>
+<radialGradient id="paint0_radial_0_291" cx="0" cy="0" r="1" gradientTransform="matrix(1.93798 8.42593 -19.1531 10.6216 6.12403 4.60648)" gradientUnits="userSpaceOnUse">
+<stop stop-color="#4B8FE6"/>
+<stop offset="1" stop-color="#0042BC"/>
+</radialGradient>
+</defs>
+</svg>
