@@ -1,9 +1,10 @@
 import { ImageSourcePropType } from 'react-native';
 
-import { AddressInput, ApiAddress, ApiShippingRate, CreateOrderResponse, OrderAddressInput, ApiAddressType, ApiCategory, ApiCustomer, ApiGender, ApiProduct, ApiStore } from '@/api/types';
+import { AddressInput, ApiAddress, ApiOrder, ApiOrderAddress, ApiOrderItem, ApiShippingRate, CreateOrderResponse, OrderAddressInput, ApiAddressType, ApiCategory, ApiCustomer, ApiGender, ApiProduct, ApiStore } from '@/api/types';
 import { decodeEntities, htmlToText, parseSpecTable } from '@/api/html';
 import { img } from '@/assets';
 import { normalize, Product } from '@/data/mock';
+import type { Order, OrderStatus } from '@/data/mock-extra';
 
 const toNumber = (s: string | undefined) => {
   const n = Number(s);
@@ -273,5 +274,104 @@ export function readCreatedOrder(res: CreateOrderResponse) {
     total: o.total !== undefined ? Number(o.total) : undefined,
     paymentUrl: o.payment_url ?? o.checkout_payment_url ?? o.pay_url,
     status: o.status,
+  };
+}
+
+/* ---------- Đơn hàng ---------- */
+
+/** Trạng thái WooCommerce (GET /orders/statuses) → tab / chip của app. */
+const ORDER_STATUS: Record<string, OrderStatus> = {
+  pending: 'Chờ xác nhận',
+  'on-hold': 'Chờ xác nhận',
+  'checkout-draft': 'Chờ xác nhận',
+  'branch-oos': 'Chờ xác nhận',
+  'ship-fee-declined': 'Chờ xác nhận',
+  'come-to-shop': 'Chờ xác nhận',
+  processing: 'Đã xác nhận',
+  shipping: 'Đang giao',
+  delivering: 'Đang giao',
+  completed: 'Hoàn thành',
+  cancelled: 'Huỷ',
+  refunded: 'Huỷ',
+  failed: 'Huỷ',
+};
+/** Trạng thái hiển thị đúng tên gốc của website thay cho nhãn chuẩn. */
+const KEEP_LABEL = new Set(['branch-oos', 'ship-fee-declined', 'come-to-shop', 'refunded', 'failed', 'pending']);
+
+const num = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** ISO / "20:56 26/10/2026" → "dd/mm/yyyy hh:mm" (định dạng dùng trong app). */
+function toOrderDate(iso?: string, text?: string) {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const d = iso ? new Date(iso) : undefined;
+  if (d && !Number.isNaN(d.getTime())) return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  const m = text?.match(/(\d{1,2}):(\d{2})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? `${p(+m[3])}/${p(+m[4])}/${m[5]} ${p(+m[1])}:${m[2]}` : (text ?? '');
+}
+
+function toOrderLine(li: ApiOrderItem) {
+  const quantity = num(li.quantity) || 1;
+  const price = num(li.price) || num(li.total) / quantity || num(li.subtotal) / quantity;
+  const regular = num(li.regular_price) || num(li.subtotal) / quantity;
+  const src = typeof li.image === 'string' ? li.image : (li.image?.src ?? li.image?.url ?? li.image_url);
+  return {
+    productId: String(li.product_id ?? ''),
+    name: decodeEntities(li.name ?? 'Sản phẩm'),
+    image: src ? { uri: src } : 0,
+    noImage: !src,
+    quantity,
+    price: Math.round(price),
+    oldPrice: regular > price ? Math.round(regular) : undefined,
+    versionSlug: li.version_slug,
+  };
+}
+
+function toOrderAddressModel(a?: ApiOrderAddress): Address | undefined {
+  if (!a || (!a.address_1 && !a.phone)) return undefined;
+  const receiver = [a.first_name, a.last_name].filter(Boolean).join(' ');
+  return {
+    id: 'order',
+    receiver: decodeEntities(receiver),
+    phone: a.phone ?? '',
+    // address_1 thường đã gồm cả tỉnh ("540 Thanh Tân, Lục Nam, Bắc Ninh") → chỉ ghép city khi chưa có.
+    address: decodeEntities(a.city && !a.address_1?.includes(a.city) ? [a.address_1, a.city].filter(Boolean).join(', ') : (a.address_1 ?? '')),
+    building: a.address_2 ? decodeEntities(a.address_2) : undefined,
+    type: 'other',
+    typeLabel: 'Khác',
+    isDefault: false,
+  };
+}
+
+const nameOf = (v?: { name?: string } | string) => (typeof v === 'string' ? v : v?.name);
+
+/** ApiOrder (danh sách hoặc chi tiết) → Order của app. */
+export function toOrder(api: ApiOrder): Order {
+  const raw = String(api.status ?? '').replace(/^wc-/, '');
+  const status = ORDER_STATUS[raw] ?? 'Chờ xác nhận';
+  const lines = (api.line_items ?? api.items ?? []).map(toOrderLine);
+  const shippingFee = num(api.shipping_total) || (api.shipping_lines ?? []).reduce((s, l) => s + num(l.total), 0);
+  return {
+    id: String(api.id),
+    serverId: String(api.id),
+    // Website đánh số "453_Nguyễn Nhật Hảo" → hiển thị "453".
+    code: (api.number ?? String(api.id)).split('_')[0],
+    createdAt: toOrderDate(api.date_created ?? api.created, api.created_text),
+    status,
+    statusLabel: KEEP_LABEL.has(raw) && api.status_name ? decodeEntities(api.status_name) : undefined,
+    lines,
+    shippingFee,
+    shippingDiscount: 0,
+    voucherDiscount: num(api.discount_total),
+    payment: api.payment_method_title || (api.payment_method === 'cod' ? 'Tiền mặt khi nhận hàng' : (api.payment_method ?? '')),
+    address: toOrderAddressModel(api.shipping) ?? toOrderAddressModel(api.billing),
+    storeName: decodeEntities(api.store_name ?? nameOf(api.store) ?? nameOf(api.branch) ?? ''),
+    note: api.customer_note || undefined,
+    cancelledAt: status === 'Huỷ' ? toOrderDate(api.date_modified) : undefined,
+    completedAt: api.date_completed ? toOrderDate(api.date_completed) : undefined,
+    total: api.total !== undefined ? num(api.total) : undefined,
+    itemsCount: api.items_count,
   };
 }

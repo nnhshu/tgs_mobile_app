@@ -231,3 +231,53 @@ export type CreateOrderResponse = {
   message?: string;
   order?: CreateOrderResponse;
 };
+
+/* ---------- Đơn hàng: GET /orders, GET /orders/{id} ---------- */
+
+/** Dòng sản phẩm — đọc mềm (danh sách chỉ có name/quantity; chi tiết theo chuẩn WooCommerce). */
+export type ApiOrderItem = {
+  id?: number | string;
+  product_id?: number | string;
+  name?: string;
+  quantity?: number | string;
+  price?: number | string;
+  regular_price?: number | string;
+  subtotal?: number | string;
+  total?: number | string;
+  image?: string | { src?: string; url?: string } | null;
+  image_url?: string;
+  /** Phiên bản tỉnh/thành của chi nhánh bán (vd. "nghe-an"). */
+  version_slug?: string;
+};
+
+export type ApiOrderAddress = { first_name?: string; last_name?: string; phone?: string; address_1?: string; address_2?: string; city?: string; state?: string };
+
+export type ApiOrder = {
+  id: number | string;
+  number?: string;
+  status?: string;
+  status_name?: string;
+  total?: number | string;
+  currency?: string;
+  created?: string;
+  created_text?: string;
+  date_created?: string;
+  date_modified?: string;
+  date_completed?: string;
+  items_count?: number;
+  items?: ApiOrderItem[];
+  line_items?: ApiOrderItem[];
+  billing?: ApiOrderAddress;
+  shipping?: ApiOrderAddress;
+  shipping_total?: number | string;
+  shipping_lines?: { method_title?: string; total?: number | string }[];
+  discount_total?: number | string;
+  payment_method?: string;
+  payment_method_title?: string;
+  customer_note?: string;
+  store?: { name?: string } | string;
+  branch?: { name?: string } | string;
+  store_name?: string;
+};
+
+export type ApiOrderPage = ApiOrder[] | { items: ApiOrder[]; total?: number; page?: number; total_pages?: number };

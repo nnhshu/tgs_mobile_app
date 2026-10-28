@@ -1,13 +1,15 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from '@/api/client';
 import { decodeEntities } from '@/api/html';
-import { Address, distanceKm, profileFromCustomer, toAddress, toAddressInput, toCategoryTree, toProduct, toShippingRate, toStore } from '@/api/mappers';
+import { Address, distanceKm, profileFromCustomer, toAddress, toAddressInput, toCategoryTree, toProduct, toOrder, toShippingRate, toStore } from '@/api/mappers';
 import {
   ApiAddressBook,
   ApiAttribute,
+  ApiOrder,
+  ApiOrderPage,
   ApiCategory,
   ApiProduct,
   ApiProductDetail,
@@ -31,6 +33,7 @@ import {
   ProductQuery,
   RegisterInput,
 } from '@/api/types';
+import type { Order } from '@/data/mock-extra';
 import { useApp } from '@/store/app-store';
 
 export { queryClient } from '@/api/query-client';
@@ -401,4 +404,58 @@ export function useFilterAttributes() {
       categories: termsOf('product_cat').filter((c) => !/chưa phân loại/i.test(c.name)),
     };
   }, [query]);
+}
+
+/* ---------- Đơn hàng của khách ---------- */
+
+const ORDERS_PER_PAGE = 20;
+const pageItems = (p: ApiOrderPage) => (Array.isArray(p) ? p : (p?.items ?? []));
+
+/** Gắn số sao khách đã đánh giá (lưu trong app) vào đơn. */
+function useWithReviews() {
+  const { orderReviews } = useApp();
+  return useCallback((o: Order): Order => (orderReviews[o.id] ? { ...o, reviewed: true, rating: orderReviews[o.id] } : o), [orderReviews]);
+}
+
+/** Danh sách đơn — GET /orders?per_page=20&page=n (tải thêm khi cuộn). */
+export function useOrders() {
+  const { token } = useApp();
+  const withReviews = useWithReviews();
+  const query = useInfiniteQuery({
+    queryKey: ['customer', 'orders', token],
+    initialPageParam: 1,
+    queryFn: ({ pageParam, signal }) => apiGet<ApiOrderPage>('/orders', { per_page: ORDERS_PER_PAGE, page: pageParam }, signal, token),
+    getNextPageParam: (last, all) => {
+      if (!Array.isArray(last) && last?.total_pages) return (last.page ?? all.length) < last.total_pages ? all.length + 1 : undefined;
+      return pageItems(last).length === ORDERS_PER_PAGE ? all.length + 1 : undefined;
+    },
+    enabled: !!token,
+    staleTime: 30 * 1000,
+  });
+  const orders = useMemo(() => (query.data?.pages ?? []).flatMap(pageItems).map(toOrder).map(withReviews), [query.data, withReviews]);
+  return { ...query, orders };
+}
+
+/** Chi tiết đơn — GET /orders/{id}; hiện ngay dữ liệu tóm tắt từ danh sách trong lúc tải. */
+export function useOrder(id?: string) {
+  const { token } = useApp();
+  const client = useQueryClient();
+  const withReviews = useWithReviews();
+  const query = useQuery<ApiOrder>({
+    queryKey: ['customer', 'order', token, id],
+    queryFn: async ({ signal }) => {
+      const res = await apiGet<ApiOrder | { order: ApiOrder }>(`/orders/${id}`, undefined, signal, token);
+      return 'order' in res && res.order ? res.order : (res as ApiOrder);
+    },
+    enabled: !!token && !!id,
+    placeholderData: () => {
+      for (const [, data] of client.getQueriesData<{ pages: ApiOrderPage[] }>({ queryKey: ['customer', 'orders'] })) {
+        const hit = data?.pages.flatMap(pageItems).find((o) => String(o.id) === id);
+        if (hit) return hit;
+      }
+      return undefined;
+    },
+  });
+  const order = useMemo(() => (query.data ? withReviews(toOrder(query.data)) : undefined), [query.data, withReviews]);
+  return { ...query, order };
 }

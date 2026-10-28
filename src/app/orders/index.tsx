@@ -1,122 +1,155 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { UnderlineTabs } from '@/components/form';
-import { ScreenHeader } from '@/components/headers';
-import { CancelOrderDialog, OrderActions, OrderLineRow, orderTotal, StatusChip } from '@/components/order-ui';
-import { useToast } from '@/components/overlays';
-import { AppText, Button, Divider, Icon, RIcon } from '@/components/ui';
+import { useOrders } from '@/api/hooks';
 import { icons } from '@/assets';
+import { Skeleton, UnderlineTabs } from '@/components/form';
+import { ScreenHeader } from '@/components/headers';
+import { OrderCard } from '@/components/order-ui';
+import { SpinningLoader, useToast } from '@/components/overlays';
+import { StateView } from '@/components/state-view';
+import { AppText, Button, Icon, RIcon } from '@/components/ui';
 import { Order } from '@/data/mock-extra';
 import { useApp } from '@/store/app-store';
-import { colors, formatPrice } from '@/theme';
+import { colors } from '@/theme';
 
-const TABS = ['Tất cả', 'Chờ xác nhận', 'Đang giao', 'Hoàn thành', 'Đánh giá', 'Huỷ'] as const;
+const TABS = ['Tất cả', 'Chờ xác nhận', 'Đang giao', 'Hoàn thành', 'Huỷ', 'Đánh giá'] as const;
 type Tab = (typeof TABS)[number];
 
-/** Đơn hàng: Tất cả / Xác nhận / Đang giao / Hoàn thành / Đánh giá / Huỷ / Đơn hàng trống. */
+const done = (o: Order) => o.status === 'Hoàn thành' || o.status === 'Đánh giá';
+
+/** Tab nào chứa đơn nào (Figma "Đơn hàng"). */
+const matches = (o: Order, t: Tab) => {
+  switch (t) {
+    case 'Tất cả':
+      return true;
+    case 'Chờ xác nhận':
+      return o.status === 'Chờ xác nhận' || o.status === 'Đã xác nhận';
+    case 'Hoàn thành':
+      return done(o);
+    case 'Đánh giá':
+      // Đơn đã hoàn thành và đã được khách chấm sao.
+      return done(o) && !!o.reviewed;
+    default:
+      return o.status === t;
+  }
+};
+
+/** Đơn hàng — GET /orders: Tất cả / Xác nhận / Đang giao / Hoàn thành / Huỷ / Đánh giá / Đơn hàng trống. */
 export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string }>();
-  const { orders, setOrderStatus, reorder } = useApp();
+  const { isLoggedIn, reorder } = useApp();
+  const query = useOrders();
   const [tab, setTab] = useState<Tab>((TABS as readonly string[]).includes(params.tab ?? '') ? (params.tab as Tab) : 'Tất cả');
-  const [cancelId, setCancelId] = useState<string | null>(null);
 
-  const matches = (o: Order, t: Tab) =>
-    t === 'Tất cả' || o.status === t || (t === 'Đánh giá' && o.status === 'Hoàn thành' && !o.reviewed);
-  const list = orders.filter((o) => matches(o, tab));
-  const counts = Object.fromEntries(TABS.slice(1, 5).map((t) => [t, orders.filter((o) => matches(o, t)).length])) as Partial<Record<Tab, number>>;
+  const list = query.orders.filter((o) => matches(o, tab));
+
+  // Tab lọc ít đơn mà server còn trang sau → tự tải thêm.
+  useEffect(() => {
+    if (list.length < 5 && query.hasNextPage && !query.isFetching) query.fetchNextPage();
+  }, [list.length, query]);
 
   const buyAgain = (o: Order) => {
+    if (!o.lines.some((l) => l.productId)) {
+      router.push({ pathname: '/orders/[id]', params: { id: o.id } });
+      return;
+    }
     reorder(o);
     toast('Đã thêm sản phẩm vào giỏ hàng');
     router.push('/cart');
   };
 
+  let body;
+  if (!isLoggedIn) {
+    body = (
+      <View style={styles.empty}>
+        <StateView
+          type="empty"
+          title="Bạn chưa đăng nhập"
+          message="Đăng nhập để xem đơn hàng của bạn"
+          actionLabel="Đăng nhập"
+          onAction={() => router.replace({ pathname: '/login', params: { redirect: '/orders' } })}
+        />
+      </View>
+    );
+  } else if (query.isLoading) {
+    body = (
+      <View style={{ gap: 8 }}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={styles.skeletonCard}>
+            <Skeleton style={{ height: 14, width: '50%' }} />
+            <Skeleton style={{ height: 56 }} />
+            <Skeleton style={{ height: 14, width: '30%' }} />
+          </View>
+        ))}
+      </View>
+    );
+  } else if (query.isError && !query.orders.length) {
+    body = (
+      <View style={styles.empty}>
+        <StateView type="offline" title="Không tải được đơn hàng" message={query.error?.message ?? 'Vui lòng thử lại'} actionLabel="Thử lại" onAction={() => query.refetch()} />
+      </View>
+    );
+  } else if (list.length === 0 && query.hasNextPage) {
+    body = (
+      <View style={styles.empty}>
+        <SpinningLoader />
+      </View>
+    );
+  } else if (list.length === 0) {
+    // Đơn hàng trống
+    body = (
+      <View style={styles.empty}>
+        <View style={styles.emptyIcon}>
+          <RIcon name="fileList3Line" size={36} color={colors.primary} />
+        </View>
+        <AppText variant="bodyMediumSemibold">Bạn chưa có đơn hàng nào</AppText>
+        <AppText size={12} color={colors.neutral70} align="center">
+          Đơn hàng của bạn sẽ hiển thị tại đây
+        </AppText>
+        <Button title="Khám phá sản phẩm" size="sm" onPress={() => router.navigate('/(tabs)/products')} style={{ marginTop: 12, paddingHorizontal: 32 }} />
+      </View>
+    );
+  } else {
+    body = (
+      <FlatList
+        data={list}
+        keyExtractor={(o) => o.id}
+        contentContainerStyle={{ gap: 8, paddingBottom: insets.bottom + 16 }}
+        renderItem={({ item }) => <OrderCard order={item} onBuyAgain={buyAgain} />}
+        refreshControl={<RefreshControl refreshing={query.isRefetching && !query.isFetchingNextPage} onRefresh={() => query.refetch()} tintColor={colors.primary} />}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => query.hasNextPage && !query.isFetchingNextPage && query.fetchNextPage()}
+        ListFooterComponent={query.isFetchingNextPage ? <SpinningLoader size={28} /> : null}
+      />
+    );
+  }
+
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
-      <ScreenHeader title="Đơn hàng của tôi" />
-      <UnderlineTabs tabs={TABS} value={tab} onChange={setTab} counts={counts} />
-      {list.length === 0 ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <RIcon name="fileList3Line" size={40} color={colors.primary} />
-          </View>
-          <AppText variant="h5">Chưa có đơn hàng</AppText>
-          <AppText color={colors.neutral70} align="center">
-            Các đơn hàng {tab === 'Tất cả' ? '' : `"${tab}" `}của bạn sẽ hiển thị tại đây.
-          </AppText>
-          <Button title="Mua sắm ngay" size="sm" onPress={() => router.navigate('/(tabs)')} style={{ marginTop: 12, minWidth: 160 }} />
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={{ paddingVertical: 8, gap: 8, paddingBottom: insets.bottom + 16 }}>
-          {list.map((o) => (
-            <Pressable key={o.id} style={styles.card} onPress={() => router.push({ pathname: '/orders/[id]', params: { id: o.id } })}>
-              <View style={styles.cardHeader}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <AppText weight="semibold">#{o.code}</AppText>
-                  <AppText size={12} color={colors.neutral60}>
-                    {o.createdAt}
-                  </AppText>
-                </View>
-                <StatusChip status={o.reviewed && o.status === 'Hoàn thành' ? 'Hoàn thành' : o.status} />
-                <Icon source={icons.seeMore} size={16} />
-              </View>
-              <Divider color={colors.neutral30} />
-              <OrderLineRow {...o.lines[0]} />
-              {o.lines.length > 1 && (
-                <AppText size={12} color={colors.neutral70} align="center">
-                  Xem thêm {o.lines.length - 1} sản phẩm
-                </AppText>
-              )}
-              <Divider color={colors.neutral30} />
-              <View style={styles.totalRow}>
-                <AppText color={colors.neutral70}>
-                  {o.lines.reduce((s, l) => s + l.quantity, 0)} sản phẩm
-                </AppText>
-                <AppText>
-                  Tổng tiền: <AppText variant="bodyMediumSemibold" color={colors.error}>{formatPrice(orderTotal(o))}</AppText>
-                </AppText>
-              </View>
-              <OrderActions
-                status={o.status}
-                reviewed={o.reviewed}
-                onCancel={() => setCancelId(o.id)}
-                onBuyAgain={() => buyAgain(o)}
-                onReview={() => router.push({ pathname: '/orders/review', params: { id: o.id } })}
-                onTrack={() => router.push({ pathname: '/orders/[id]', params: { id: o.id } })}
-                onReceived={() => {
-                  setOrderStatus(o.id, 'Hoàn thành');
-                  toast('Cảm ơn bạn đã xác nhận nhận hàng!');
-                }}
-              />
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-      <CancelOrderDialog
-        visible={!!cancelId}
-        onCancel={() => setCancelId(null)}
-        onConfirm={(reason) => {
-          if (cancelId) setOrderStatus(cancelId, 'Huỷ', { cancelReason: reason });
-          setCancelId(null);
-          toast('Đã huỷ đơn hàng');
-        }}
+      <ScreenHeader
+        title="Đơn hàng"
+        right={
+          <Pressable onPress={() => router.push('/help')} hitSlop={8}>
+            <Icon source={icons.moreFill} size={24} />
+          </Pressable>
+        }
       />
+      <UnderlineTabs tabs={TABS} value={tab} onChange={setTab} />
+      {body}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 40, paddingBottom: 80, backgroundColor: colors.white },
-  emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.primarySurface, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  card: { backgroundColor: colors.white, padding: 12, gap: 12 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 40, paddingBottom: 80, backgroundColor: colors.white },
+  emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primarySurface, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  skeletonCard: { backgroundColor: colors.white, padding: 12, gap: 10 },
 });

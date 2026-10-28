@@ -10,7 +10,7 @@ import { formatAddress } from '@/api/mappers';
 import { parseSections, parseSpecTable } from '@/api/html';
 import { icons } from '@/assets';
 import { Skeleton } from '@/components/form';
-import { BottomSheet, SuccessToast, useToast } from '@/components/overlays';
+import { LoginPromptSheet, SuccessToast, useToast } from '@/components/overlays';
 import { ProductImage } from '@/components/product-card';
 import { ApiProductRail, ProductRow } from '@/components/product-rail';
 import { StateView } from '@/components/state-view';
@@ -483,35 +483,18 @@ export default function ProductDetailScreen() {
       </View>
 
       {/* 02_Khách bấm Mua ngay - Login Form */}
-      <BottomSheet visible={loginSheet} onClose={() => setLoginSheet(false)}>
-        <View style={styles.loginSheet}>
-          <View style={styles.loginIcon}>
-            <RIcon name="loginBoxLine" size={28} color={colors.white} />
-          </View>
-          <View style={{ gap: 8, alignItems: 'center' }}>
-            <AppText variant="h5" align="center">
-              Đăng nhập để tiếp tục
-            </AppText>
-            <AppText color={colors.neutral70} align="center">
-              Bạn cần đăng nhập để mua hàng và tích điểm
-            </AppText>
-          </View>
-          <View style={{ alignSelf: 'stretch', gap: 4 }}>
-            <Button
-              title="Đăng nhập / Đăng ký"
-              onPress={() => {
-                setLoginSheet(false);
-                // Giữ sản phẩm trong giỏ, đăng nhập xong mở Giỏ hàng để đặt tiếp.
-                addToCart(product, quantity, variantLabel, raw);
-                router.push({ pathname: '/login', params: { redirect: '/cart' } });
-              }}
-            />
-            <Pressable onPress={() => setLoginSheet(false)} style={styles.later}>
-              <AppText variant="bodyMedium">Để sau</AppText>
-            </Pressable>
-          </View>
-        </View>
-      </BottomSheet>
+      <LoginPromptSheet
+        visible={loginSheet}
+        title="Đăng nhập để tiếp tục"
+        message="Bạn cần đăng nhập để mua hàng và tích điểm"
+        onClose={() => setLoginSheet(false)}
+        onLogin={() => {
+          setLoginSheet(false);
+          // Giữ sản phẩm trong giỏ, đăng nhập xong mở Giỏ hàng để đặt tiếp.
+          addToCart(product, quantity, variantLabel, raw);
+          router.push({ pathname: '/login', params: { redirect: '/cart' } });
+        }}
+      />
 
       {/* 02_Toast Noti_Đã thêm vào giỏ */}
       <SuccessToast visible={added} message="Đã thêm vào giỏ hàng" />
@@ -544,9 +527,6 @@ const styles = StyleSheet.create({
   floatingHeader: { position: 'absolute', left: 0, right: 0, height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
   sheetProduct: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   variantError: { backgroundColor: colors.errorSurface, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4 },
-  loginSheet: { alignItems: 'center', gap: 20, paddingTop: 8, paddingBottom: 8 },
-  loginIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  later: { height: 48, alignItems: 'center', justifyContent: 'center' },
   bottomBar: { backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.neutral40, boxShadow: '0px -8px 9px rgba(0,0,0,0.08)' },
   qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8 },
   actions: { flexDirection: 'row', gap: 8, paddingHorizontal: 12 },

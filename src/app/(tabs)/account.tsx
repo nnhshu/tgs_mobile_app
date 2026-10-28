@@ -80,7 +80,7 @@ const SectionGap = () => <View style={styles.sectionGap} />;
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const { isLoggedIn, logout, cartCount, profile, points, orders, unreadCount } = useApp();
+  const { isLoggedIn, logout, cartCount, profile, points, unreadCount } = useApp();
   const [notify, setNotify] = useState(false);
   const [faceId, setFaceId] = useState(true);
   const [language, setLanguage] = useState<'VIE' | 'ENG'>('VIE');
@@ -95,8 +95,7 @@ export default function AccountScreen() {
   const SUMMARY_KEY = { 'Chờ xác nhận': 'pending', 'Đang giao': 'shipping', 'Hoàn thành': 'completed', 'Đánh giá': 'to_review' } as const;
   const countOf = (status: OrderStatus) => {
     const key = SUMMARY_KEY[status as keyof typeof SUMMARY_KEY];
-    if (summary.data && key) return summary.data.orders[key];
-    return orders.filter((o) => (status === 'Đánh giá' ? o.status === 'Hoàn thành' && !o.reviewed : o.status === status)).length;
+    return summary.data && key ? summary.data.orders[key] : 0;
   };
 
   const uploadAvatar = useUploadAvatar();

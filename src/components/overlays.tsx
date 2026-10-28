@@ -242,6 +242,9 @@ const styles = StyleSheet.create({
   dialogActions: { flexDirection: 'row', gap: 8, alignSelf: 'stretch', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12 },
   dialogBtn: { width: 131, height: 48 },
   dialogBtnOutline: { height: 44, borderColor: colors.neutral40 },
+  loginSheet: { alignItems: 'center', gap: 20, paddingTop: 8, paddingBottom: 8 },
+  loginIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  loginLater: { height: 48, alignItems: 'center', justifyContent: 'center' },
   successRoot: { ...StyleSheet.absoluteFill, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   successCard: { alignSelf: 'stretch', alignItems: 'center', gap: 10, padding: 16, borderRadius: 8, backgroundColor: 'rgba(30,30,30,0.9)' },
   successIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center' },
@@ -278,5 +281,35 @@ export function SuccessToast({ visible, message }: { visible: boolean; message: 
         </AppText>
       </Animated.View>
     </Animated.View>
+  );
+}
+
+/**
+ * Yêu cầu đăng nhập (Figma "02_Khách bấm Mua ngay - Login", "Login Required khi Checkout"):
+ * icon tròn xanh, tiêu đề, mô tả, nút "Đăng nhập / Đăng ký" và "Để sau".
+ */
+export function LoginPromptSheet({ visible, title, message, onLogin, onClose }: { visible: boolean; title: string; message: string; onLogin: () => void; onClose: () => void }) {
+  return (
+    <BottomSheet visible={visible} onClose={onClose}>
+      <View style={styles.loginSheet}>
+        <View style={styles.loginIcon}>
+          <RIcon name="loginBoxLine" size={28} color={colors.white} />
+        </View>
+        <View style={{ gap: 8, alignItems: 'center' }}>
+          <AppText variant="h5" align="center">
+            {title}
+          </AppText>
+          <AppText color={colors.neutral70} align="center">
+            {message}
+          </AppText>
+        </View>
+        <View style={{ alignSelf: 'stretch', gap: 4 }}>
+          <Button title="Đăng nhập / Đăng ký" onPress={onLogin} />
+          <Pressable onPress={onClose} style={styles.loginLater}>
+            <AppText variant="bodyMedium">Để sau</AppText>
+          </Pressable>
+        </View>
+      </View>
+    </BottomSheet>
   );
 }

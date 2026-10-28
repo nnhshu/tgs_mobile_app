@@ -108,6 +108,8 @@ export const remix = {
   heart3Fill: require('@/assets/remix/heart-3-fill.svg'),
   heart3Line: require('@/assets/remix/heart-3-line.svg'),
   loginBoxLine: require('@/assets/remix/login-box-line.svg'),
+  playFill: require('@/assets/remix/play-fill.svg'),
+  videoAddLine: require('@/assets/remix/video-add-line.svg'),
 } as const;
 
 export type RemixName = keyof typeof remix;

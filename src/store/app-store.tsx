@@ -13,18 +13,25 @@ import {
   initialCards,
   initialMyVouchers,
   initialNotifications,
-  initialOrders,
   initialPointHistory,
   MyVoucher,
   NotificationItem,
   Order,
-  OrderStatus,
   PointEntry,
   VoucherDef,
 } from '@/data/mock-extra';
 
 /** raw: dữ liệu API gốc — giữ lại để tính lại giá/tồn kho khi đổi chi nhánh. */
-export type CartItem = { product: Product; quantity: number; selected: boolean; variant?: string; raw?: ApiProduct };
+export type CartItem = {
+  product: Product;
+  quantity: number;
+  selected: boolean;
+  variant?: string;
+  raw?: ApiProduct;
+  /** Giá & cửa hàng lúc thêm vào giỏ — để báo "Giá đã đổi" / "Cửa hàng đã đổi" (Figma Giỏ hàng). */
+  addedPrice?: number;
+  addedStoreId?: string;
+};
 /** id phương thức thanh toán của API (cod, vietqr_gateway...) hoặc thẻ đã lưu `card:<id>`. */
 export type PaymentMethod = string;
 export type Profile = { name: string; phone: string; email: string; birthday: string; gender: 'Nam' | 'Nữ' | 'Khác'; avatar?: ImageSourcePropType | { uri: string } };
@@ -67,7 +74,8 @@ function useAppState() {
   const [recentSearches, setRecentSearches] = useState(['Sữa bột Similac', 'Sữa tăng cân', 'Bình sữa Pigeon']);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [cards, setCards] = useState<Card[]>(initialCards);
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  // Đánh giá đơn (số sao theo id đơn) — API chưa có endpoint đánh giá nên lưu trong app.
+  const [orderReviews, setOrderReviews] = useState<Record<string, number>>({});
   const [myVouchers, setMyVouchers] = useState<MyVoucher[]>(initialMyVouchers);
   const [points, setPoints] = useState(0);
   const [pointHistory, setPointHistory] = useState<PointEntry[]>(initialPointHistory);
@@ -148,10 +156,17 @@ function useAppState() {
         setCart((items) => {
           const existing = items.find((item) => item.product.id === product.id);
           if (existing) {
-            return items.map((item) => (item === existing ? { ...item, quantity: item.quantity + quantity, selected: true, variant: variant ?? item.variant, raw: raw ?? item.raw } : item));
+            return items.map((item) =>
+              item === existing
+                ? { ...item, quantity: item.quantity + quantity, selected: true, variant: variant ?? item.variant, raw: raw ?? item.raw, addedPrice: product.price, addedStoreId: selectedStore?.id }
+                : item,
+            );
           }
-          return [...items, { product, quantity, selected: true, variant, raw }];
+          return [...items, { product, quantity, selected: true, variant, raw, addedPrice: product.price, addedStoreId: selectedStore?.id }];
         }),
+      /** Khách đã thấy thay đổi giá / cửa hàng → ghi nhận giá & cửa hàng hiện tại cho cả giỏ. */
+      ackCartChanges: () =>
+        setCart((items) => items.map((i) => ({ ...i, addedPrice: (i.raw ? toProduct(i.raw, province) : i.product).price, addedStoreId: selectedStore?.id }))),
       setQuantity: (id: string, quantity: number) =>
         updateCart(id, (item) => ({ ...item, quantity: Math.max(1, Math.min(quantity, item.product.stock ?? 99)) })),
       removeFromCart: (id: string) => setCart((items) => items.filter((item) => item.product.id !== id)),
@@ -211,32 +226,23 @@ function useAppState() {
       locationGranted,
       setLocationGranted,
 
-      /* orders */
-      orders,
-      placeOrder: (input: Omit<Order, 'id' | 'code' | 'createdAt' | 'status'> & { code?: string }) => {
-        const t = today();
-        const order: Order = { ...input, id: uid(), code: input.code ?? `TO${t.code}${String(orders.length + 1).padStart(2, '0')}`, createdAt: `${t.date} ${t.time}`, status: 'Chờ xác nhận' };
-        setOrders((list) => [order, ...list]);
+      /* orders — danh sách / chi tiết lấy từ API (useOrders, useOrder) */
+      /** Sau khi POST /orders thành công: bỏ các sản phẩm đã đặt khỏi giỏ, reset nháp checkout, thêm thông báo. */
+      placeOrder: (code: string) => {
         setCart((items) => items.filter((item) => !item.selected));
         if (appliedVoucherId) setMyVouchers((list) => list.map((v) => (v.voucherId === appliedVoucherId ? { ...v, status: 'used' } : v)));
         setAppliedVoucherId(null);
         setNote('');
-        const earned = Math.floor(input.lines.reduce((s, l) => s + l.price * l.quantity, 0) / 10000);
-        // Đơn thật: điểm do server cộng (đồng bộ qua /customers/me/summary).
-        if (earned > 0 && !input.serverId) {
-          setPoints((p) => p + earned);
-          setPointHistory((h) => [{ id: uid(), title: `Tích điểm đơn hàng #${order.code}`, date: t.date, amount: earned }, ...h]);
-        }
-        setNotifications((n) => [{ id: uid(), type: 'Đơn hàng', title: 'Đặt hàng thành công', body: `Đơn #${order.code} đã được gửi tới cửa hàng và đang chờ xác nhận.`, time: 'Vừa xong', read: false }, ...n]);
-        return order;
+        setNotifications((n) => [{ id: uid(), type: 'Đơn hàng', title: 'Đặt hàng thành công', body: `Đơn #${code} đã được gửi tới cửa hàng và đang chờ xác nhận.`, time: 'Vừa xong', read: false }, ...n]);
       },
-      setOrderStatus: (id: string, status: OrderStatus, extra?: Partial<Order>) =>
-        setOrders((list) => list.map((o) => (o.id === id ? { ...o, ...extra, status } : o))),
+      orderReviews,
+      rateOrder: (id: string, rating: number) => setOrderReviews((r) => ({ ...r, [id]: rating })),
       reorder: (order: Order) =>
         setCart((items) => {
           let next = items.map((i) => ({ ...i, selected: false }));
           for (const line of order.lines) {
-            const product: Product = { id: line.productId, name: line.name, image: line.image, price: line.price, oldPrice: line.oldPrice };
+            if (!line.productId) continue;
+            const product: Product = { id: line.productId, name: line.name, image: line.image, noImage: line.noImage, price: line.price, oldPrice: line.oldPrice };
             const existing = next.find((i) => i.product.id === product.id);
             next = existing
               ? next.map((i) => (i === existing ? { ...i, quantity: i.quantity + line.quantity, selected: true } : i))
@@ -266,7 +272,7 @@ function useAppState() {
       markRead: (id: string) => setNotifications((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n))),
       markAllRead: () => setNotifications((list) => list.map((n) => ({ ...n, read: true }))),
     };
-  }, [isLoggedIn, token, profile, cart, viewed, recentSearches, wishlist, cards, orders, myVouchers, points, pointHistory, notifications, selectedStore, province, userLocation, locationGranted, addressId, payment, appliedVoucherId, note]);
+  }, [isLoggedIn, token, profile, cart, viewed, recentSearches, wishlist, cards, orderReviews, myVouchers, points, pointHistory, notifications, selectedStore, province, userLocation, locationGranted, addressId, payment, appliedVoucherId, note]);
 }
 
 export type AppState = ReturnType<typeof useAppState>;

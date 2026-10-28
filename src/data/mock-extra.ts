@@ -94,12 +94,6 @@ export const tiers = [
 
 /* ---------- Địa chỉ & thanh toán ---------- */
 
-/** Địa chỉ mẫu cho các đơn hàng demo (đơn thật lưu bản chụp địa chỉ lúc đặt). */
-const demoAddresses: Address[] = [
-  { id: 'a1', receiver: 'Phạm Tường', phone: '0902524586', address: 'Chung Cư Hà Đô, Nguyễn Văn Công, Phường Hạnh Thông, Quận Gò Vấp, Thành phố Hồ Chí Minh', type: 'home', typeLabel: 'Nhà riêng', isDefault: true },
-  { id: 'a2', receiver: 'Phạm Tường', phone: '0902524586', address: '736 Nguyễn Kiệm, Phường Đức Nhuận, Quận Phú Nhuận, Thành phố Hồ Chí Minh', type: 'office', typeLabel: 'Văn phòng', isDefault: false },
-];
-
 export type Card = { id: string; brand: 'visa' | 'mastercard'; holder: string; number: string; expiry: string; isDefault: boolean };
 
 export const initialCards: Card[] = [{ id: 'c1', brand: 'visa', holder: 'PHAM TUONG', number: '4111111111114242', expiry: '12/28', isDefault: true }];
@@ -108,9 +102,9 @@ export const maskCard = (n: string) => `**** **** **** ${n.slice(-4)}`;
 
 /* ---------- Đơn hàng ---------- */
 
-export type OrderStatus = 'Chờ xác nhận' | 'Đang giao' | 'Hoàn thành' | 'Đánh giá' | 'Huỷ';
+export type OrderStatus = 'Chờ xác nhận' | 'Đã xác nhận' | 'Đang giao' | 'Hoàn thành' | 'Đánh giá' | 'Huỷ';
 /** Lưu tên & ảnh tại thời điểm đặt để đơn cũ vẫn hiển thị đúng khi sản phẩm thay đổi. */
-export type OrderLine = { productId: string; name: string; image: ImageSourcePropType; quantity: number; price: number; oldPrice?: number };
+export type OrderLine = { productId: string; name: string; image: ImageSourcePropType; noImage?: boolean; quantity: number; price: number; oldPrice?: number; versionSlug?: string };
 
 export type Order = {
   id: string;
@@ -130,40 +124,24 @@ export type Order = {
   storeName: string;
   note?: string;
   reviewed?: boolean;
+  /** Số sao khách đã đánh giá (1–5) — hiện ở tab "Đánh giá". */
+  rating?: number;
   cancelReason?: string;
+  /** "dd/mm/yyyy hh:mm" — lúc yêu cầu huỷ. */
+  cancelledAt?: string;
+  /** Tên trạng thái gốc từ website (vd. "Chi nhánh hết hàng") khi khác nhãn chuẩn. */
+  statusLabel?: string;
+  /** "dd/mm/yyyy hh:mm" — lúc hoàn thành (date_completed). */
+  completedAt?: string;
+  /** Tổng tiền server trả (ưu tiên hơn tự cộng). */
+  total?: number;
+  itemsCount?: number;
 };
 
-export const initialOrders: Order[] = [
-  {
-    id: 'o1', code: 'TO2025070601', createdAt: '06/07/2025 09:41', status: 'Đang giao',
-    lines: [
-      { productId: '20271', name: 'Sữa bột Nutricare GluGold 850g', image: { uri: 'https://thegioisua.com/wp-content/uploads/2026/09/11111111111.png' }, quantity: 1, price: 529000 },
-      { productId: '19878', name: 'Sữa bột Coloscare 24h 2+ 800g', image: { uri: 'https://thegioisua.com/wp-content/uploads/2026/09/zzzzzzzzz.png' }, quantity: 1, price: 470000 },
-    ],
-    shippingFee: 35000, shippingDiscount: 35000, voucherDiscount: 0, payment: 'Ví điện tử', address: demoAddresses[0], storeName: 'Thế Giới Sữa Huỳnh Văn Bánh',
-  },
-  {
-    id: 'o2', code: 'TO2025062201', createdAt: '22/06/2025 18:20', status: 'Hoàn thành',
-    lines: [{ productId: '11687', name: 'Sữa bột Similac Mom hương vani 900g', image: { uri: 'https://thegioisua.com/wp-content/uploads/2026/08/sua-bot-similac-mom-huong-vani-900g-1.webp' }, quantity: 2, price: 489000 }],
-    shippingFee: 35000, shippingDiscount: 35000, voucherDiscount: 0, payment: 'Tiền mặt khi nhận hàng', address: demoAddresses[0], storeName: 'Thế Giới Sữa Hoa Lan',
-  },
-  {
-    id: 'o3', code: 'TO2025061502', createdAt: '15/06/2025 10:05', status: 'Huỷ',
-    lines: [{ productId: '13139', name: 'Khăn ướt Goo:by cao cấp 100 tờ', image: { uri: 'https://thegioisua.com/wp-content/uploads/2026/10/xxxxxxxxx.png' }, quantity: 3, price: 40000 }],
-    shippingFee: 35000, shippingDiscount: 0, voucherDiscount: 0, payment: 'Tiền mặt khi nhận hàng', address: demoAddresses[1], storeName: 'Thế Giới Sữa Hoa Lan',
-    cancelReason: 'Thay đổi địa chỉ giao hàng',
-  },
-];
 
-export const cancelReasons = [
-  'Muốn thay đổi sản phẩm',
-  'Thay đổi địa chỉ giao hàng',
-  'Tìm thấy giá rẻ hơn',
-  'Đặt nhầm',
-  'Lý do khác',
-] as const;
 
-export const reviewTags = ['Sản phẩm chính hãng', 'Giao hàng nhanh', 'Đóng gói cẩn thận', 'Giá tốt', 'Nhân viên thân thiện'] as const;
+
+
 
 export const quickNotes = ['Giao giờ hành chính', 'Gọi trước khi giao', 'Để hàng ở lễ tân', 'Không bấm chuông'] as const;
 

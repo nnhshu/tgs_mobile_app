@@ -39,15 +39,6 @@ export default function PaymentProcessingScreen() {
       router.replace({ pathname: '/order-failed', params: { reason: 'Thiếu thông tin đơn hàng. Vui lòng kiểm tra lại giỏ hàng và địa chỉ nhận.' } });
       return;
     }
-    // Snapshot trước khi giỏ hàng bị xoá các sản phẩm đã đặt.
-    const lines = draft.selected.map((i) => ({
-      productId: i.product.id,
-      name: i.product.name,
-      image: i.product.image,
-      quantity: i.quantity,
-      price: i.product.price,
-      oldPrice: i.product.oldPrice,
-    }));
     const address = draft.address;
     const note = [app.note, address.note && `Ghi chú giao hàng: ${address.note}`].filter(Boolean).join(' · ');
 
@@ -64,23 +55,14 @@ export default function PaymentProcessingScreen() {
       {
         onSuccess: async (res) => {
           const created = readCreatedOrder(res);
-          const order = app.placeOrder({
-            lines,
-            shippingFee,
-            shippingDiscount: 0,
-            voucherDiscount: 0,
-            payment: paymentLabel,
-            address,
-            storeName: app.selectedStore?.name ?? '',
-            note: app.note,
-            serverId: created.id,
-            ...(created.number ? { code: created.number } : {}),
-          });
+          const code = created.number ?? created.id ?? '';
+          // Đơn nằm trên website (GET /orders) — app chỉ dọn giỏ hàng & nháp checkout.
+          app.placeOrder(code);
           if (created.paymentUrl) {
             setStage('paying');
             await WebBrowser.openBrowserAsync(created.paymentUrl).catch(() => undefined);
           }
-          router.replace({ pathname: '/order-success', params: { id: order.id } });
+          router.replace({ pathname: '/order-success', params: { ...(created.id ? { id: created.id } : {}), code } });
         },
         onError: (e) => {
           // 409 tgs_duplicate_order: SĐT đã có đơn gần đây — gửi kèm link tra cứu đơn của website.

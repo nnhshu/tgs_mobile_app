@@ -79,6 +79,9 @@ App lấy dữ liệu sản phẩm từ `https://thegioisua.com/wp-json/tgs/v1` 
 | `PUT /customers/me/address-book/{id}` | Sửa địa chỉ |
 | `DELETE /customers/me/address-book/{id}` | Xoá địa chỉ |
 | `POST /customers/me/address-book/{id}/default` | Đặt địa chỉ mặc định |
+| `GET /orders?per_page=20&page=n` | Đơn hàng của tôi (tải thêm khi cuộn). Danh sách chỉ có id/number/status/total/created → mỗi thẻ tự lấy chi tiết để hiện sản phẩm |
+| `GET /orders/{id}` | Chi tiết đơn: billing/shipping, items (product_id, name, quantity, total, version_slug). Ảnh sản phẩm lấy từ `/products/{id}`; chi nhánh suy từ `version_slug` |
+| `GET /orders/statuses` | Trạng thái WooCommerce → tab: pending/on-hold → Chờ xác nhận, processing → Đã xác nhận, completed → Hoàn thành, cancelled/refunded/failed → Huỷ |
 | `GET /attributes` | Bộ lọc sản phẩm — Thương hiệu (`product_brand`), Danh mục (`product_cat`); nhóm khác hiện chưa có giá trị |
 | `GET /products?category=&min_price=&max_price=&on_sale=1&stock_status=instock` | Lọc phía server (danh mục 1 id/lần, giá, khuyến mãi, còn hàng). Thương hiệu & Nơi bán lọc trên máy vì API chưa có tham số |
 | `POST /shipping/rates` `{ items, shipping }` | Checkout — danh sách phương thức giao + phí (id dùng làm `shipping_rate_id`) |

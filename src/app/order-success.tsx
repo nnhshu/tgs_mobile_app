@@ -6,16 +6,14 @@ import Animated, { ZoomIn } from 'react-native-reanimated';
 import { icons } from '@/assets';
 import { ScreenHeader } from '@/components/headers';
 import { AppText, Button, Icon } from '@/components/ui';
-import { useApp } from '@/store/app-store';
 import { colors } from '@/theme';
 
 /** Hoàn tất đặt đơn. */
 export default function OrderSuccessScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
-  const { orders } = useApp();
-  const order = orders.find((o) => o.id === id) ?? orders[0];
+  // id / code = đơn vừa tạo trên website (POST /orders).
+  const { id, code } = useLocalSearchParams<{ id?: string; code?: string }>();
   const goHome = () => router.dismissTo('/(tabs)');
-  const orderCode = `#${order?.code ?? ''}`;
+  const orderCode = code ? `#${code}` : '';
 
   return (
     <View style={styles.screen}>
@@ -37,7 +35,7 @@ export default function OrderSuccessScreen() {
           <View style={{ gap: 16, alignItems: 'center' }}>
             <Button title="Xem đơn hàng" onPress={() => {
                 router.dismissTo('/(tabs)');
-                if (order) router.push({ pathname: '/orders/[id]', params: { id: order.id } });
+                router.push(id ? { pathname: '/orders/[id]', params: { id } } : '/orders');
               }} style={{ width: 259 }} />
             <Pressable onPress={goHome} hitSlop={8}>
               <AppText variant="bodyMediumRegular">Về trang chủ</AppText>
